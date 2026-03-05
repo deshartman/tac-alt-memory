@@ -3,6 +3,7 @@ import { z } from 'zod';
 export { z } from 'zod';
 import pino from 'pino';
 import { WebSocket } from 'ws';
+import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 
 /**
  * Environment types for the Twilio Agent Connect
@@ -87,6 +88,20 @@ declare function computeServiceUrls(environment: Environment): {
     conversationsApiUrl: string;
     knowledgeApiUrl: string;
 };
+/**
+ * Server configuration for built-in Fastify setup
+ */
+declare const VoiceServerConfigSchema: z.ZodObject<{
+    host: z.ZodDefault<z.ZodString>;
+    port: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    host: string;
+    port: number;
+}, {
+    host?: string | undefined;
+    port?: number | undefined;
+}>;
+type VoiceServerConfig = z.infer<typeof VoiceServerConfigSchema>;
 
 /**
  * Message direction in a conversation
@@ -1315,25 +1330,158 @@ declare const ConversationParticipantSchema: z.ZodObject<{
 type ConversationParticipant = z.infer<typeof ConversationParticipantSchema>;
 
 /**
- * Voice server configuration for built-in Fastify setup
+ * ConversationRelay API Types
+ *
+ * Zod schemas are the single source of truth for runtime validation. Types are
+ * inferred from schemas via z.infer. Compile-time drift guards (type assertions
+ * against VoiceResponse.ConversationRelayAttributes / LanguageAttributes) ensure
+ * that if the Twilio SDK types change, `npm run typecheck` will fail immediately.
+ *
+ * @see https://www.twilio.com/docs/voice/conversationrelay
+ * @see https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun
  */
-declare const VoiceServerConfigSchema: z.ZodObject<{
-    host: z.ZodDefault<z.ZodString>;
-    port: z.ZodDefault<z.ZodNumber>;
-    path: z.ZodDefault<z.ZodString>;
-    webhookPath: z.ZodDefault<z.ZodString>;
+/**
+ * Language configuration for multi-language ConversationRelay support
+ * @see https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun#language-attributes
+ */
+declare const LanguageAttributesSchema: z.ZodObject<{
+    /** Language code (e.g., 'en-US', 'es-ES', 'en-AU') */
+    code: z.ZodString;
+    /** TTS provider for this language */
+    ttsProvider: z.ZodOptional<z.ZodString>;
+    /** TTS voice for this language */
+    voice: z.ZodOptional<z.ZodString>;
+    /** TTS language (may differ from code) */
+    ttsLanguage: z.ZodOptional<z.ZodString>;
+    /** Transcription provider for this language */
+    transcriptionProvider: z.ZodOptional<z.ZodString>;
+    /** Speech model for transcription */
+    speechModel: z.ZodOptional<z.ZodString>;
+    /** Transcription language (may differ from code) */
+    transcriptionLanguage: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    path: string;
-    host: string;
-    port: number;
-    webhookPath: string;
+    code: string;
+    voice?: string | undefined;
+    ttsProvider?: string | undefined;
+    ttsLanguage?: string | undefined;
+    transcriptionProvider?: string | undefined;
+    speechModel?: string | undefined;
+    transcriptionLanguage?: string | undefined;
 }, {
-    path?: string | undefined;
-    host?: string | undefined;
-    port?: number | undefined;
-    webhookPath?: string | undefined;
+    code: string;
+    voice?: string | undefined;
+    ttsProvider?: string | undefined;
+    ttsLanguage?: string | undefined;
+    transcriptionProvider?: string | undefined;
+    speechModel?: string | undefined;
+    transcriptionLanguage?: string | undefined;
 }>;
-type VoiceServerConfig = z.infer<typeof VoiceServerConfigSchema>;
+type LanguageAttributes = z.infer<typeof LanguageAttributesSchema>;
+/**
+ * ConversationRelay attributes for TwiML configuration
+ * @see https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun
+ */
+declare const ConversationRelayAttributesSchema: z.ZodObject<{
+    /** WebSocket URL for ConversationRelay (required) */
+    url: z.ZodString;
+    /** Initial greeting to play when call connects */
+    welcomeGreeting: z.ZodOptional<z.ZodString>;
+    /** Whether welcome greeting can be interrupted */
+    welcomeGreetingInterruptible: z.ZodOptional<z.ZodEnum<["any", "speech", "none"]>>;
+    /** Transcription provider (e.g., 'Deepgram', 'Google') */
+    transcriptionProvider: z.ZodOptional<z.ZodString>;
+    /** Language for transcription (e.g., 'en-US') */
+    transcriptionLanguage: z.ZodOptional<z.ZodString>;
+    /** Speech model for transcription (e.g., 'nova-3-general') */
+    speechModel: z.ZodOptional<z.ZodString>;
+    /** Text-to-speech provider (e.g., 'Google', 'ElevenLabs') */
+    ttsProvider: z.ZodOptional<z.ZodString>;
+    /** Language for TTS (e.g., 'en-US') */
+    ttsLanguage: z.ZodOptional<z.ZodString>;
+    /** Voice identifier for TTS (e.g., 'en-US-Journey-O') */
+    voice: z.ZodOptional<z.ZodString>;
+    /** ElevenLabs text normalization setting */
+    elevenlabsTextNormalization: z.ZodOptional<z.ZodString>;
+    /** When agent speech can be interrupted */
+    interruptible: z.ZodOptional<z.ZodEnum<["any", "speech", "none"]>>;
+    /** Interrupt detection sensitivity */
+    interruptSensitivity: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+    /** Enable DTMF tone detection */
+    dtmfDetection: z.ZodOptional<z.ZodBoolean>;
+    /** Recognition hints for domain-specific vocabulary */
+    hints: z.ZodOptional<z.ZodString>;
+    /** Whether prompts should be reported when TTS is playing and interrupt is disabled */
+    reportInputDuringAgentSpeech: z.ZodOptional<z.ZodBoolean>;
+    /** Enable partial prompts (streaming) */
+    partialPrompts: z.ZodOptional<z.ZodBoolean>;
+    /** Enable profanity filtering */
+    profanityFilter: z.ZodOptional<z.ZodBoolean>;
+    /** Allow preemption of agent speech */
+    preemptible: z.ZodOptional<z.ZodBoolean>;
+    /** Default language code */
+    language: z.ZodOptional<z.ZodString>;
+    /** Debug options for troubleshooting (string per SDK, not boolean) */
+    debug: z.ZodOptional<z.ZodString>;
+    /** Conversational Intelligence Service ID or unique name */
+    intelligenceService: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    url: string;
+    voice?: string | undefined;
+    ttsProvider?: string | undefined;
+    ttsLanguage?: string | undefined;
+    transcriptionProvider?: string | undefined;
+    speechModel?: string | undefined;
+    transcriptionLanguage?: string | undefined;
+    welcomeGreeting?: string | undefined;
+    welcomeGreetingInterruptible?: "any" | "speech" | "none" | undefined;
+    elevenlabsTextNormalization?: string | undefined;
+    interruptible?: "any" | "speech" | "none" | undefined;
+    interruptSensitivity?: "low" | "medium" | "high" | undefined;
+    dtmfDetection?: boolean | undefined;
+    hints?: string | undefined;
+    reportInputDuringAgentSpeech?: boolean | undefined;
+    partialPrompts?: boolean | undefined;
+    profanityFilter?: boolean | undefined;
+    preemptible?: boolean | undefined;
+    language?: string | undefined;
+    debug?: string | undefined;
+    intelligenceService?: string | undefined;
+}, {
+    url: string;
+    voice?: string | undefined;
+    ttsProvider?: string | undefined;
+    ttsLanguage?: string | undefined;
+    transcriptionProvider?: string | undefined;
+    speechModel?: string | undefined;
+    transcriptionLanguage?: string | undefined;
+    welcomeGreeting?: string | undefined;
+    welcomeGreetingInterruptible?: "any" | "speech" | "none" | undefined;
+    elevenlabsTextNormalization?: string | undefined;
+    interruptible?: "any" | "speech" | "none" | undefined;
+    interruptSensitivity?: "low" | "medium" | "high" | undefined;
+    dtmfDetection?: boolean | undefined;
+    hints?: string | undefined;
+    reportInputDuringAgentSpeech?: boolean | undefined;
+    partialPrompts?: boolean | undefined;
+    profanityFilter?: boolean | undefined;
+    preemptible?: boolean | undefined;
+    language?: string | undefined;
+    debug?: string | undefined;
+    intelligenceService?: string | undefined;
+}>;
+type ConversationRelayAttributes = z.infer<typeof ConversationRelayAttributesSchema>;
+/**
+ * @internal Compile-time SDK drift guards — do not use directly.
+ * If the Twilio SDK updates VoiceResponse.ConversationRelayAttributes or
+ * VoiceResponse.LanguageAttributes, these checks will fail during typecheck,
+ * signaling that our Zod schemas need to be updated to match.
+ */
+type _SDKDriftGuards = {
+    langCompat: LanguageAttributes extends VoiceResponse.LanguageAttributes ? true : never;
+    langKeys: keyof VoiceResponse.LanguageAttributes extends keyof LanguageAttributes ? true : never;
+    crelayCompat: ConversationRelayAttributes extends VoiceResponse.ConversationRelayAttributes ? true : never;
+    crelayKeys: keyof VoiceResponse.ConversationRelayAttributes extends keyof ConversationRelayAttributes ? true : never;
+};
 /**
  * Custom parameters passed via TwiML
  */
@@ -1519,9 +1667,10 @@ declare const WebSocketMessageSchema: z.ZodUnion<[z.ZodObject<{
 }>]>;
 type WebSocketMessage = z.infer<typeof WebSocketMessageSchema>;
 /**
- * Response message to send back via WebSocket
+ * Text Token Message to send back via WebSocket
+ * @see https://www.twilio.com/docs/voice/conversationrelay/websocket-messages#text-tokens-message
  */
-declare const VoiceResponseSchema: z.ZodObject<{
+declare const TextTokenMessageSchema: z.ZodObject<{
     type: z.ZodLiteral<"text">;
     token: z.ZodString;
     last: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
@@ -1534,26 +1683,44 @@ declare const VoiceResponseSchema: z.ZodObject<{
     token: string;
     last?: boolean | undefined;
 }>;
-type VoiceResponse = z.infer<typeof VoiceResponseSchema>;
+type TextTokenMessage = z.infer<typeof TextTokenMessageSchema>;
 /**
- * TwiML generation helpers
+ * Extended ConversationRelay configuration that includes child elements.
+ * Includes all ConversationRelayAttributes fields plus support for languages array.
+ *
+ * Note: The type is defined as an explicit interface and the schema is annotated
+ * with z.ZodType<ConversationRelayConfig> to prevent TypeScript's type inference
+ * from collapsing to `any` when resolving complex Zod generics with many optional
+ * fields (especially under exactOptionalPropertyTypes).
  */
-interface TwiMLOptions {
-    websocketUrl: string;
-    customParameters?: CustomParameters;
-    /** Welcome greeting to play when call connects */
-    welcomeGreeting?: string | undefined;
+interface ConversationRelayConfig extends ConversationRelayAttributes {
+    /** Optional language configurations as child <Language> elements */
+    languages?: LanguageAttributes[] | undefined;
 }
+declare const ConversationRelayConfigSchema: z.ZodType<ConversationRelayConfig>;
 /**
  * ConversationRelay callback payload from Twilio webhook
+ *
+ * Sent when a ConversationRelay session ends or transitions state.
+ * Includes standard voice webhook parameters plus ConversationRelay-specific fields.
+ *
+ * @see https://www.twilio.com/docs/voice/twiml#request-parameters
+ * @see https://www.twilio.com/docs/voice/conversationrelay/conversationrelay-noun#statuscallback
  */
 declare const ConversationRelayCallbackPayloadSchema: z.ZodObject<{
     AccountSid: z.ZodString;
     CallSid: z.ZodString;
-    CallStatus: z.ZodString;
+    /** Call status with strict type checking for all valid Twilio call states */
+    CallStatus: z.ZodEnum<["queued", "initiated", "ringing", "in-progress", "completed", "busy", "no-answer", "failed", "canceled"]>;
     From: z.ZodString;
     To: z.ZodString;
-    Direction: z.ZodOptional<z.ZodString>;
+    /** Direction of the call */
+    Direction: z.ZodEnum<["inbound", "outbound-api", "outbound-dial"]>;
+    ApiVersion: z.ZodOptional<z.ZodString>;
+    ForwardedFrom: z.ZodOptional<z.ZodString>;
+    CallerName: z.ZodOptional<z.ZodString>;
+    ParentCallSid: z.ZodOptional<z.ZodString>;
+    ApplicationSid: z.ZodOptional<z.ZodString>;
     SessionId: z.ZodOptional<z.ZodString>;
     SessionStatus: z.ZodOptional<z.ZodString>;
     SessionDuration: z.ZodOptional<z.ZodString>;
@@ -1561,10 +1728,15 @@ declare const ConversationRelayCallbackPayloadSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     AccountSid: string;
     CallSid: string;
-    CallStatus: string;
+    CallStatus: "queued" | "initiated" | "ringing" | "in-progress" | "completed" | "busy" | "no-answer" | "failed" | "canceled";
     From: string;
     To: string;
-    Direction?: string | undefined;
+    Direction: "inbound" | "outbound-api" | "outbound-dial";
+    ApiVersion?: string | undefined;
+    ForwardedFrom?: string | undefined;
+    CallerName?: string | undefined;
+    ParentCallSid?: string | undefined;
+    ApplicationSid?: string | undefined;
     SessionId?: string | undefined;
     SessionStatus?: string | undefined;
     SessionDuration?: string | undefined;
@@ -1572,10 +1744,15 @@ declare const ConversationRelayCallbackPayloadSchema: z.ZodObject<{
 }, {
     AccountSid: string;
     CallSid: string;
-    CallStatus: string;
+    CallStatus: "queued" | "initiated" | "ringing" | "in-progress" | "completed" | "busy" | "no-answer" | "failed" | "canceled";
     From: string;
     To: string;
-    Direction?: string | undefined;
+    Direction: "inbound" | "outbound-api" | "outbound-dial";
+    ApiVersion?: string | undefined;
+    ForwardedFrom?: string | undefined;
+    CallerName?: string | undefined;
+    ParentCallSid?: string | undefined;
+    ApplicationSid?: string | undefined;
     SessionId?: string | undefined;
     SessionStatus?: string | undefined;
     SessionDuration?: string | undefined;
@@ -3304,12 +3481,11 @@ declare class VoiceChannel extends BaseChannel {
      * @returns TwiML XML string with ConversationRelay configuration
      */
     handleIncomingCall(options: {
-        websocketUrl: string;
         toNumber: string;
         fromNumber: string;
         callSid?: string;
         actionUrl?: string;
-        welcomeGreeting?: string;
+        conversationRelayConfig: ConversationRelayConfig;
     }): Promise<string>;
     /**
      * Handle ConversationRelay callback from Twilio
@@ -3355,9 +3531,23 @@ declare class VoiceChannel extends BaseChannel {
      */
     hasActiveStreamTask(conversationId: ConversationId): boolean;
     /**
-     * Generate TwiML for incoming calls
+     * Generate TwiML to connect a call to ConversationRelay.
+     * Validates configuration with Zod before generating TwiML.
+     *
+     * @param config - ConversationRelay configuration (url, transcription, TTS, etc.)
+     * @param parameters - Optional custom parameters to pass via TwiML <Parameter> elements
+     * @param options - Optional settings for the Connect verb (e.g., actionUrl)
+     * @returns TwiML XML string
+     * @throws {Error} if config validation fails
      */
-    generateTwiML(options: TwiMLOptions): string;
+    connectConversationRelay(config: ConversationRelayConfig, parameters?: CustomParameters, options?: {
+        actionUrl?: string;
+    }): string;
+    /**
+     * Filter out undefined values from configuration object.
+     * Keeps null, false, 0, and empty strings as they are valid values.
+     */
+    private filterUnsetValues;
     /**
      * Extract conversation ID - Not applicable for Voice channel
      */
@@ -3438,14 +3628,14 @@ interface TACServerConfig {
     /** Custom webhook paths */
     webhookPaths?: {
         sms?: string;
-        voice?: string;
         twiml?: string;
+        ws?: string;
         conversationRelayCallback?: string;
         /** Path for Conversation Intelligence webhook (optional - only registered if provided) */
         cintel?: string;
     };
-    /** Welcome greeting for voice calls (played when call connects) */
-    welcomeGreeting?: string;
+    /** ConversationRelay configuration (welcomeGreeting, transcription, TTS, interaction settings, etc.) */
+    conversationRelayConfig?: Partial<Omit<ConversationRelayConfig, 'url'>>;
     /** Handler for voice handoff requests (returns TwiML string) */
     handoffHandler?: (payload: ConversationRelayCallbackPayload) => Promise<string>;
     /** Enable development features */
@@ -3554,4 +3744,4 @@ declare class TACTool<TParams = any, TResult = any> {
  */
 declare function defineTool<TParams = any, TResult = any>(name: string, description: string, parameters: JSONSchema, implementation: ToolFunction<TParams, TResult>): TACTool<TParams, TResult>;
 
-export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema$1 as JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, type TwiMLOptions, VoiceChannel, type VoiceChannelEvents, type VoiceResponse, VoiceResponseSchema, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, computeServiceUrls, createLogger, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema$1 as JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type _SDKDriftGuards, computeServiceUrls, createLogger, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };

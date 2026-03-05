@@ -10,20 +10,17 @@ describe('VoiceChannel', () => {
     conversationServiceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
   });
 
-  describe('generateTwiML()', () => {
+  describe('connectConversationRelay()', () => {
     it('should generate TwiML without welcomeGreeting', () => {
       const config = new TACConfig(getTestConfig());
       const tac = new TAC({ config });
       const voiceChannel = new VoiceChannel(tac);
 
-      const twiml = voiceChannel.generateTwiML({
-        websocketUrl: 'wss://example.com/voice',
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
       });
 
-      expect(twiml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-      expect(twiml).toContain('<Response>');
-      expect(twiml).toContain('<Connect>');
-      expect(twiml).toContain('<ConversationRelay url="wss://example.com/voice">');
+      expect(twiml).toContain('url="wss://example.com/conversation-relay"');
       expect(twiml).not.toContain('welcomeGreeting');
     });
 
@@ -32,17 +29,13 @@ describe('VoiceChannel', () => {
       const tac = new TAC({ config });
       const voiceChannel = new VoiceChannel(tac);
 
-      const twiml = voiceChannel.generateTwiML({
-        websocketUrl: 'wss://example.com/voice',
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
         welcomeGreeting: 'Hello! How can I help you today?',
       });
 
-      expect(twiml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-      expect(twiml).toContain('<Response>');
-      expect(twiml).toContain('<Connect>');
-      expect(twiml).toContain(
-        '<ConversationRelay url="wss://example.com/voice" welcomeGreeting="Hello! How can I help you today?">'
-      );
+      expect(twiml).toContain('url="wss://example.com/conversation-relay"');
+      expect(twiml).toContain('welcomeGreeting="Hello! How can I help you today?"');
     });
 
     it('should include custom parameters in TwiML', () => {
@@ -50,16 +43,18 @@ describe('VoiceChannel', () => {
       const tac = new TAC({ config });
       const voiceChannel = new VoiceChannel(tac);
 
-      const twiml = voiceChannel.generateTwiML({
-        websocketUrl: 'wss://example.com/voice',
-        customParameters: {
+      const twiml = voiceChannel.connectConversationRelay(
+        {
+          url: 'wss://example.com/conversation-relay',
+        },
+        {
           conversation_id: 'CH123',
           profile_id: 'mem_profile_123',
-        },
-      });
+        }
+      );
 
-      expect(twiml).toContain('<Parameter name="conversation_id" value="CH123" />');
-      expect(twiml).toContain('<Parameter name="profile_id" value="mem_profile_123" />');
+      expect(twiml).toContain('name="conversation_id" value="CH123"');
+      expect(twiml).toContain('name="profile_id" value="mem_profile_123"');
     });
 
     it('should handle undefined welcomeGreeting', () => {
@@ -67,12 +62,12 @@ describe('VoiceChannel', () => {
       const tac = new TAC({ config });
       const voiceChannel = new VoiceChannel(tac);
 
-      const twiml = voiceChannel.generateTwiML({
-        websocketUrl: 'wss://example.com/voice',
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
         welcomeGreeting: undefined,
       });
 
-      expect(twiml).toContain('<ConversationRelay url="wss://example.com/voice">');
+      expect(twiml).toContain('url="wss://example.com/conversation-relay"');
       expect(twiml).not.toContain('welcomeGreeting');
     });
   });
@@ -207,6 +202,234 @@ describe('VoiceChannel', () => {
       // After shutdown, should still return null (cleared state)
       voiceChannel.shutdown();
       expect(voiceChannel.getWebsocket('CH_test' as any)).toBeNull();
+    });
+  });
+
+  describe('ConversationRelay attributes', () => {
+    it('should apply transcription configuration', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
+        transcriptionProvider: 'Deepgram',
+        transcriptionLanguage: 'en-AU',
+        speechModel: 'nova-3-general',
+      });
+
+      expect(twiml).toContain('transcriptionProvider="Deepgram"');
+      expect(twiml).toContain('transcriptionLanguage="en-AU"');
+      expect(twiml).toContain('speechModel="nova-3-general"');
+    });
+
+    it('should apply TTS configuration', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
+        ttsProvider: 'Google',
+        ttsLanguage: 'en-US',
+        voice: 'en-US-Journey-O',
+      });
+
+      expect(twiml).toContain('ttsProvider="Google"');
+      expect(twiml).toContain('voice="en-US-Journey-O"');
+    });
+
+    it('should apply interaction configuration', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
+        interruptible: 'any',
+        interruptSensitivity: 'high',
+        dtmfDetection: true,
+        hints: 'account balance, billing, payment',
+      });
+
+      expect(twiml).toContain('interruptible="any"');
+      expect(twiml).toContain('dtmfDetection="true"');
+      expect(twiml).toContain('hints="account balance, billing, payment"');
+    });
+
+    it('should filter out undefined attributes', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
+        interruptible: 'any',
+        hints: undefined, // should not appear
+      });
+
+      expect(twiml).toContain('interruptible="any"');
+      expect(twiml).not.toContain('hints=');
+    });
+
+    it('should support multiple language configurations', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      const twiml = voiceChannel.connectConversationRelay({
+        url: 'wss://example.com/conversation-relay',
+        language: 'en-AU', // Default language
+        languages: [
+          {
+            code: 'en-AU',
+            ttsProvider: 'ElevenLabs',
+            voice: 'IKne3meq5aSn9XLyUdCD',
+            transcriptionProvider: 'Deepgram',
+            speechModel: 'nova-3-general',
+          },
+          {
+            code: 'en-NZ',
+            ttsProvider: 'ElevenLabs',
+            voice: 'VEWZvLXUrFL3O7dUnBSW',
+            transcriptionProvider: 'Deepgram',
+            speechModel: 'nova-3-general',
+          },
+        ],
+      });
+
+      expect(twiml).toContain('language="en-AU"');
+      expect(twiml).toContain('<Language code="en-AU"');
+      expect(twiml).toContain('ttsProvider="ElevenLabs"');
+      expect(twiml).toContain('<Language code="en-NZ"');
+    });
+
+    it('should throw error for invalid configuration', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      expect(() => {
+        voiceChannel.connectConversationRelay({
+          url: 'invalid-url', // Not a valid URL
+        });
+      }).toThrow('Invalid ConversationRelay configuration');
+    });
+
+    it('should throw error for invalid custom parameters', () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      expect(() => {
+        voiceChannel.connectConversationRelay(
+          {
+            url: 'wss://example.com/conversation-relay',
+          },
+          {
+            conversation_id: 123, // Should be string, not number
+          } as any
+        );
+      }).toThrow('Invalid custom parameters');
+    });
+  });
+
+  describe('handleIncomingCall with conversationRelayConfig', () => {
+    it('should apply conversationRelayConfig to generated TwiML', async () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      // Mock conversation creation
+      vi.spyOn(tac.getConversationClient(), 'createConversation').mockResolvedValue({
+        id: 'CH_test',
+      } as any);
+      vi.spyOn(tac.getConversationClient(), 'addParticipant').mockResolvedValue({
+        id: 'PA_test',
+        profileId: 'mem_test',
+      } as any);
+
+      const twiml = await voiceChannel.handleIncomingCall({
+        toNumber: '+15559876543',
+        fromNumber: '+15551234567',
+        conversationRelayConfig: {
+          url: 'wss://example.com/conversation-relay',
+          transcriptionProvider: 'Deepgram',
+          interruptible: 'any',
+          hints: 'technical support, billing',
+        },
+      });
+
+      expect(twiml).toContain('transcriptionProvider="Deepgram"');
+      expect(twiml).toContain('interruptible="any"');
+      expect(twiml).toContain('hints="technical support, billing"');
+    });
+
+    it('should apply multi-language config to handleIncomingCall', async () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      // Mock conversation creation
+      vi.spyOn(tac.getConversationClient(), 'createConversation').mockResolvedValue({
+        id: 'CH_test',
+      } as any);
+      vi.spyOn(tac.getConversationClient(), 'addParticipant').mockResolvedValue({
+        id: 'PA_test',
+        profileId: 'mem_test',
+      } as any);
+
+      const twiml = await voiceChannel.handleIncomingCall({
+        toNumber: '+15559876543',
+        fromNumber: '+15551234567',
+        conversationRelayConfig: {
+          url: 'wss://example.com/conversation-relay',
+          language: 'en-US',
+          languages: [
+            {
+              code: 'en-US',
+              ttsProvider: 'Google',
+              voice: 'en-US-Journey-O',
+            },
+            {
+              code: 'es-ES',
+              ttsProvider: 'Google',
+              voice: 'es-ES-Standard-A',
+            },
+          ],
+        },
+      });
+
+      expect(twiml).toContain('language="en-US"');
+      expect(twiml).toContain('<Language code="en-US"');
+      expect(twiml).toContain('<Language code="es-ES"');
+    });
+
+    it('should include welcomeGreeting in TwiML', async () => {
+      const config = new TACConfig(getTestConfig());
+      const tac = new TAC({ config });
+      const voiceChannel = new VoiceChannel(tac);
+
+      // Mock conversation creation
+      vi.spyOn(tac.getConversationClient(), 'createConversation').mockResolvedValue({
+        id: 'CH_test',
+      } as any);
+      vi.spyOn(tac.getConversationClient(), 'addParticipant').mockResolvedValue({
+        id: 'PA_test',
+        profileId: 'mem_test',
+      } as any);
+
+      const twiml = await voiceChannel.handleIncomingCall({
+        toNumber: '+15559876543',
+        fromNumber: '+15551234567',
+        conversationRelayConfig: {
+          url: 'wss://example.com/conversation-relay',
+          welcomeGreeting: 'Hello! How can I help you today?',
+        },
+      });
+
+      // Verify the TwiML contains welcomeGreeting attribute
+      expect(twiml).toContain('welcomeGreeting="Hello! How can I help you today?"');
     });
   });
 
@@ -454,4 +677,5 @@ describe('VoiceChannel', () => {
       expect(updateSpy).toHaveBeenCalledWith('CH_test_conv', 'CLOSED');
     });
   });
+
 });

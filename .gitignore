@@ -5,7 +5,7 @@ node_modules/
 *.log
 
 # Only ignore dist in examples, not packages
-examples/*/dist/
+getting_started/examples/*/dist/
 
 # IDE
 .idea/

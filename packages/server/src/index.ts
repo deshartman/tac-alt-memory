@@ -9,7 +9,6 @@
 export { TACServer } from './lib/server';
 export type { TACServerConfig } from './lib/server';
 
-
 // Re-export from core
 export * from '@twilio/tac-core';
 

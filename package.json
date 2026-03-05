@@ -8,16 +8,13 @@
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint packages/*/src/**/*.ts examples/*/src/**/*.ts",
-    "lint:fix": "eslint packages/*/src/**/*.ts examples/*/src/**/*.ts --fix",
-    "format": "prettier --write packages/*/src/**/*.ts examples/*/src/**/*.ts",
-    "format:check": "prettier --check packages/*/src/**/*.ts examples/*/src/**/*.ts",
+    "lint": "eslint packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts",
+    "lint:fix": "eslint packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts --fix",
+    "format": "prettier --write packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts",
+    "format:check": "prettier --check packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev": "npm run dev --workspaces --if-present",
-    "example:sms": "npm run dev --workspace=simple-sms-bot",
-    "example:multi": "npm run dev --workspace=multi-channel-demo",
-    "example:exec": "npm run dev --workspace=exec-connect-demo",
-    "example:knowledge": "npm run dev --workspace=knowledge-search"
+    "example:getting-started": "npm run dev --workspace=tac-example-openai"
   },
   "keywords": [
     "twilio",

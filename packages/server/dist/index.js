@@ -4,7 +4,7 @@ import websocket from '@fastify/websocket';
 import gracefulShutdown from 'fastify-graceful-shutdown';
 import twilio from 'twilio';
 import { WebSocket } from 'ws';
-import VoiceResponse2 from 'twilio/lib/twiml/VoiceResponse.js';
+import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -8759,6 +8759,10 @@ function computeServiceUrls(environment) {
   };
   return baseUrls[environment];
 }
+var VoiceServerConfigSchema = external_exports.object({
+  host: external_exports.string().default("0.0.0.0"),
+  port: external_exports.number().int().positive().default(3e3)
+});
 
 // ../core/src/types/conversation.ts
 var ParticipantAddressTypeSchema = external_exports.enum([
@@ -9107,12 +9111,72 @@ var CreateConversationSummariesResponseSchema = external_exports.object({
   message: external_exports.string()
 });
 
-// ../core/src/types/voice.ts
-var VoiceServerConfigSchema = external_exports.object({
-  host: external_exports.string().default("0.0.0.0"),
-  port: external_exports.number().int().positive().default(3e3),
-  path: external_exports.string().default("/twiml"),
-  webhookPath: external_exports.string().default("/voice")
+// ../core/src/types/crelay.ts
+var LanguageAttributesSchema = external_exports.object({
+  /** Language code (e.g., 'en-US', 'es-ES', 'en-AU') */
+  code: external_exports.string(),
+  /** TTS provider for this language */
+  ttsProvider: external_exports.string().optional(),
+  /** TTS voice for this language */
+  voice: external_exports.string().optional(),
+  /** TTS language (may differ from code) */
+  ttsLanguage: external_exports.string().optional(),
+  /** Transcription provider for this language */
+  transcriptionProvider: external_exports.string().optional(),
+  /** Speech model for transcription */
+  speechModel: external_exports.string().optional(),
+  /** Transcription language (may differ from code) */
+  transcriptionLanguage: external_exports.string().optional()
+});
+var ConversationRelayAttributesSchema = external_exports.object({
+  /** WebSocket URL for ConversationRelay (required) */
+  url: external_exports.string().url(),
+  // Welcome greeting settings
+  /** Initial greeting to play when call connects */
+  welcomeGreeting: external_exports.string().optional(),
+  /** Whether welcome greeting can be interrupted */
+  welcomeGreetingInterruptible: external_exports.enum(["any", "speech", "none"]).optional(),
+  // Transcription settings
+  /** Transcription provider (e.g., 'Deepgram', 'Google') */
+  transcriptionProvider: external_exports.string().optional(),
+  /** Language for transcription (e.g., 'en-US') */
+  transcriptionLanguage: external_exports.string().optional(),
+  /** Speech model for transcription (e.g., 'nova-3-general') */
+  speechModel: external_exports.string().optional(),
+  // TTS settings
+  /** Text-to-speech provider (e.g., 'Google', 'ElevenLabs') */
+  ttsProvider: external_exports.string().optional(),
+  /** Language for TTS (e.g., 'en-US') */
+  ttsLanguage: external_exports.string().optional(),
+  /** Voice identifier for TTS (e.g., 'en-US-Journey-O') */
+  voice: external_exports.string().optional(),
+  /** ElevenLabs text normalization setting */
+  elevenlabsTextNormalization: external_exports.string().optional(),
+  // Interaction settings
+  /** When agent speech can be interrupted */
+  interruptible: external_exports.enum(["any", "speech", "none"]).optional(),
+  /** Interrupt detection sensitivity */
+  interruptSensitivity: external_exports.enum(["low", "medium", "high"]).optional(),
+  /** Enable DTMF tone detection */
+  dtmfDetection: external_exports.boolean().optional(),
+  /** Recognition hints for domain-specific vocabulary */
+  hints: external_exports.string().optional(),
+  /** Whether prompts should be reported when TTS is playing and interrupt is disabled */
+  reportInputDuringAgentSpeech: external_exports.boolean().optional(),
+  // Advanced settings
+  /** Enable partial prompts (streaming) */
+  partialPrompts: external_exports.boolean().optional(),
+  /** Enable profanity filtering */
+  profanityFilter: external_exports.boolean().optional(),
+  /** Allow preemption of agent speech */
+  preemptible: external_exports.boolean().optional(),
+  /** Default language code */
+  language: external_exports.string().optional(),
+  /** Debug options for troubleshooting (string per SDK, not boolean) */
+  debug: external_exports.string().optional(),
+  // Intelligence service
+  /** Conversational Intelligence Service ID or unique name */
+  intelligenceService: external_exports.string().optional()
 });
 var CustomParametersSchema = external_exports.object({
   conversation_id: external_exports.string().optional(),
@@ -9152,19 +9216,43 @@ var WebSocketMessageSchema = external_exports.union([
   PromptMessageSchema,
   InterruptMessageSchema
 ]);
-var VoiceResponseSchema = external_exports.object({
+var TextTokenMessageSchema = external_exports.object({
   type: external_exports.literal("text"),
   token: external_exports.string(),
   last: external_exports.boolean().optional().default(true)
 });
+var ConversationRelayConfigSchema = ConversationRelayAttributesSchema.extend({
+  /** Optional language configurations as child <Language> elements */
+  languages: external_exports.array(LanguageAttributesSchema).optional()
+});
 var ConversationRelayCallbackPayloadSchema = external_exports.object({
+  // Core Twilio identifiers (required)
   AccountSid: external_exports.string(),
   CallSid: external_exports.string(),
-  CallStatus: external_exports.string(),
-  // 'in-progress', 'completed', 'busy', 'no-answer', 'failed'
+  /** Call status with strict type checking for all valid Twilio call states */
+  CallStatus: external_exports.enum([
+    "queued",
+    "initiated",
+    "ringing",
+    "in-progress",
+    "completed",
+    "busy",
+    "no-answer",
+    "failed",
+    "canceled"
+  ]),
+  // Call participants (required)
   From: external_exports.string(),
   To: external_exports.string(),
-  Direction: external_exports.string().optional(),
+  /** Direction of the call */
+  Direction: external_exports.enum(["inbound", "outbound-api", "outbound-dial"]),
+  // Standard voice webhook parameters (optional)
+  ApiVersion: external_exports.string().optional(),
+  ForwardedFrom: external_exports.string().optional(),
+  CallerName: external_exports.string().optional(),
+  ParentCallSid: external_exports.string().optional(),
+  ApplicationSid: external_exports.string().optional(),
+  // ConversationRelay session information (optional)
   SessionId: external_exports.string().optional(),
   SessionStatus: external_exports.string().optional(),
   SessionDuration: external_exports.string().optional(),
@@ -11641,7 +11729,7 @@ var VoiceChannel = class extends BaseChannel {
   sendResponse(conversationId, message, metadata) {
     try {
       const ws = this.webSocketConnections.get(conversationId);
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (ws?.readyState !== WebSocket.OPEN) {
         throw new Error(`No active WebSocket connection for conversation ${conversationId}`);
       }
       const response = {
@@ -11670,15 +11758,8 @@ var VoiceChannel = class extends BaseChannel {
    * @returns TwiML XML string with ConversationRelay configuration
    */
   async handleIncomingCall(options) {
-    const {
-      websocketUrl,
-      toNumber,
-      fromNumber,
-      callSid,
-      actionUrl,
-      welcomeGreeting = "Hello! How can I assist you today?"
-    } = options;
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
+    const { toNumber, fromNumber, callSid, actionUrl, conversationRelayConfig } = options;
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replaceAll(/[-:.]/g, "").slice(0, 15) + "Z";
     const conversationName = `tac-voice-${fromNumber}-${timestamp}`;
     const conversationClient = this.tac.getConversationClient();
     const conversation = await conversationClient.createConversation(conversationName);
@@ -11700,18 +11781,16 @@ var VoiceChannel = class extends BaseChannel {
       "AI_AGENT"
     );
     const aiAgentParticipantId = aiAgentParticipant.id;
-    const actionAttr = actionUrl ? ` action="${actionUrl}"` : "";
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Connect${actionAttr}>
-        <ConversationRelay url="${websocketUrl}" welcomeGreeting="${welcomeGreeting}">
-            <Parameter name="conversation_id" value="${conversationId}" />
-            <Parameter name="profile_id" value="${profileId}" />
-            <Parameter name="customer_participant_id" value="${customerParticipantId}" />
-            <Parameter name="ai_agent_participant_id" value="${aiAgentParticipantId}" />
-        </ConversationRelay>
-    </Connect>
-</Response>`;
+    return this.connectConversationRelay(
+      conversationRelayConfig,
+      {
+        conversation_id: conversationId,
+        profile_id: profileId,
+        customer_participant_id: customerParticipantId,
+        ai_agent_participant_id: aiAgentParticipantId
+      },
+      actionUrl ? { actionUrl } : void 0
+    );
   }
   // =========================================================================
   // ConversationRelay Callback Handling
@@ -11823,30 +11902,61 @@ var VoiceChannel = class extends BaseChannel {
     return controller !== void 0 && !controller.signal.aborted;
   }
   // =========================================================================
-  // TwiML Generation (legacy, without conversation creation)
+  // ConversationRelay TwiML Generation
   // =========================================================================
   /**
-   * Generate TwiML for incoming calls
+   * Generate TwiML to connect a call to ConversationRelay.
+   * Validates configuration with Zod before generating TwiML.
+   *
+   * @param config - ConversationRelay configuration (url, transcription, TTS, etc.)
+   * @param parameters - Optional custom parameters to pass via TwiML <Parameter> elements
+   * @param options - Optional settings for the Connect verb (e.g., actionUrl)
+   * @returns TwiML XML string
+   * @throws {Error} if config validation fails
    */
-  generateTwiML(options) {
-    const { websocketUrl, customParameters, welcomeGreeting } = options;
-    let customParamsXml = "";
-    if (customParameters) {
-      for (const [key, value] of Object.entries(customParameters)) {
+  connectConversationRelay(config2, parameters, options) {
+    const validationResult = ConversationRelayConfigSchema.safeParse(config2);
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(", ");
+      throw new Error(`Invalid ConversationRelay configuration: ${errorMessage}`);
+    }
+    const validatedConfig = validationResult.data;
+    const { languages, ...conversationRelayAttributes } = validatedConfig;
+    const filteredConfig = this.filterUnsetValues(conversationRelayAttributes);
+    const response = new VoiceResponse();
+    const connect = response.connect(options?.actionUrl ? { action: options.actionUrl } : {});
+    const relay = connect.conversationRelay(filteredConfig);
+    if (languages && languages.length > 0) {
+      for (const lang of languages) {
+        const filteredLang = this.filterUnsetValues(lang);
+        relay.language(filteredLang);
+      }
+    }
+    if (parameters) {
+      const paramResult = CustomParametersSchema.safeParse(parameters);
+      if (!paramResult.success) {
+        throw new Error(`Invalid custom parameters: ${paramResult.error.message}`);
+      }
+      for (const [name, value] of Object.entries(paramResult.data)) {
         if (value !== void 0) {
-          customParamsXml += `<Parameter name="${key}" value="${value}" />`;
+          relay.parameter({ name, value });
         }
       }
     }
-    const greetingAttr = welcomeGreeting ? ` welcomeGreeting="${welcomeGreeting}"` : "";
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <ConversationRelay url="${websocketUrl}"${greetingAttr}>
-      ${customParamsXml}
-    </ConversationRelay>
-  </Connect>
-</Response>`;
+    return response.toString();
+  }
+  /**
+   * Filter out undefined values from configuration object.
+   * Keeps null, false, 0, and empty strings as they are valid values.
+   */
+  filterUnsetValues(config2) {
+    const filtered = {};
+    for (const [key, value] of Object.entries(config2)) {
+      if (value !== void 0) {
+        filtered[key] = value;
+      }
+    }
+    return filtered;
   }
   /**
    * Extract conversation ID - Not applicable for Voice channel
@@ -11884,7 +11994,7 @@ function handleFlexHandoffLogic(formData, flexWorkflowSid) {
       contentType: "text/plain"
     };
   }
-  const response = new VoiceResponse2();
+  const response = new VoiceResponse();
   const handoffDataRaw = formData["HandoffData"] || "";
   if (handoffDataRaw) {
     let handoffData;
@@ -11941,14 +12051,12 @@ function handleFlexHandoffLogic(formData, flexWorkflowSid) {
 var DEFAULT_CONFIG = {
   voice: {
     host: "0.0.0.0",
-    port: 3e3,
-    path: "/twiml",
-    webhookPath: "/voice"
+    port: 3e3
   },
   webhookPaths: {
-    sms: "/sms",
-    voice: "/voice",
+    sms: "/webhook",
     twiml: "/twiml",
+    ws: "/ws",
     conversationRelayCallback: "/conversation-relay-callback"
   },
   development: false,
@@ -12061,15 +12169,17 @@ var TACServer = class {
           const callSid = formData["CallSid"] || "";
           const protocol = request.headers["x-forwarded-proto"] || "http";
           const host = request.headers.host;
-          const websocketUrl = `${protocol === "https" ? "wss" : "ws"}://${host}${this.config.webhookPaths.voice || "/voice"}`;
+          const websocketUrl = `${protocol === "https" ? "wss" : "ws"}://${host}${this.config.webhookPaths.ws || "/ws"}`;
           const callbackUrl = `${protocol}://${host}${this.config.webhookPaths.conversationRelayCallback || "/conversation-relay-callback"}`;
           const twiml = await voiceChannel.handleIncomingCall({
-            websocketUrl,
             toNumber,
             fromNumber,
             callSid,
             actionUrl: callbackUrl,
-            ...this.config.welcomeGreeting && { welcomeGreeting: this.config.welcomeGreeting }
+            conversationRelayConfig: {
+              url: websocketUrl,
+              ...this.config.conversationRelayConfig
+            }
           });
           await reply.type("application/xml").send(twiml);
         } catch (error) {
@@ -12117,7 +12227,7 @@ var TACServer = class {
     );
     await this.fastify.register((fastify) => {
       fastify.get(
-        this.config.webhookPaths.voice || "/voice",
+        this.config.webhookPaths.ws || "/ws",
         { websocket: true },
         (socket) => {
           const voiceChannel = this.tac.getChannel("voice");
@@ -12194,8 +12304,8 @@ var TACServer = class {
           host: voiceConfig.host,
           port: voiceConfig.port,
           sms_webhook: this.config.webhookPaths.sms,
-          twiml_path: this.config.webhookPaths.twiml,
-          voice_websocket: this.config.webhookPaths.voice,
+          twiml_webhook: this.config.webhookPaths.twiml,
+          ws_websocket: this.config.webhookPaths.ws,
           conversation_relay_callback: this.config.webhookPaths.conversationRelayCallback,
           ...this.config.webhookPaths.cintel && {
             cintel_webhook: this.config.webhookPaths.cintel
@@ -12320,6 +12430,6 @@ function defineTool(name, description, parameters, implementation) {
   return new TACTool(name, description, parameters, implementation);
 }
 
-export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayCallbackPayloadSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ProfileLookupResponseSchema, ProfileResponseSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceResponseSchema, VoiceServerConfigSchema, WebSocketMessageSchema, computeServiceUrls, createLogger, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId, external_exports as z };
+export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ProfileLookupResponseSchema, ProfileResponseSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, computeServiceUrls, createLogger, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId, external_exports as z };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

@@ -88,3 +88,13 @@ export function computeServiceUrls(environment: Environment): {
 
   return baseUrls[environment];
 }
+
+/**
+ * Server configuration for built-in Fastify setup
+ */
+export const VoiceServerConfigSchema = z.object({
+  host: z.string().default('0.0.0.0'),
+  port: z.number().int().positive().default(3000),
+});
+
+export type VoiceServerConfig = z.infer<typeof VoiceServerConfigSchema>;

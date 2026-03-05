@@ -14,8 +14,8 @@ export * from './memory';
 // Conversation types
 export * from './conversation';
 
-// Voice types
-export * from './voice';
+// ConversationRelay types (Twilio Voice API)
+export * from './crelay';
 
 // Tool types
 export * from './tools';

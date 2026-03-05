@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 import {
   ChannelType,
   ConversationId,
@@ -7,9 +8,11 @@ import {
   SetupMessage,
   PromptMessage,
   InterruptMessage,
-  VoiceResponse,
+  TextTokenMessage,
   CustomParameters,
-  TwiMLOptions,
+  CustomParametersSchema,
+  ConversationRelayConfig,
+  ConversationRelayConfigSchema,
   ConversationRelayCallbackPayload,
   isConversationId,
   isProfileId,
@@ -300,7 +303,8 @@ export class VoiceChannel extends BaseChannel {
       this.voiceCallbacks.onWebSocketDisconnected({ conversationId });
     }
 
-    // End conversation
+    // End conversation (endConversation is async in BaseChannel)
+    // eslint-disable-next-line @typescript-eslint/await-thenable -- false positive: endConversation returns Promise<void>
     await this.endConversation(conversationId);
   }
 
@@ -315,11 +319,11 @@ export class VoiceChannel extends BaseChannel {
     try {
       const ws = this.webSocketConnections.get(conversationId);
 
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (ws?.readyState !== WebSocket.OPEN) {
         throw new Error(`No active WebSocket connection for conversation ${conversationId}`);
       }
 
-      const response: VoiceResponse = {
+      const response: TextTokenMessage = {
         type: 'text',
         token: message,
         last: true,
@@ -348,24 +352,16 @@ export class VoiceChannel extends BaseChannel {
    * @returns TwiML XML string with ConversationRelay configuration
    */
   public async handleIncomingCall(options: {
-    websocketUrl: string;
     toNumber: string;
     fromNumber: string;
     callSid?: string;
     actionUrl?: string;
-    welcomeGreeting?: string;
+    conversationRelayConfig: ConversationRelayConfig;
   }): Promise<string> {
-    const {
-      websocketUrl,
-      toNumber,
-      fromNumber,
-      callSid,
-      actionUrl,
-      welcomeGreeting = 'Hello! How can I assist you today?',
-    } = options;
+    const { toNumber, fromNumber, callSid, actionUrl, conversationRelayConfig } = options;
 
     // Create timestamp for conversation name
-    const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+    const timestamp = new Date().toISOString().replaceAll(/[-:.]/g, '').slice(0, 15) + 'Z';
     const conversationName = `tac-voice-${fromNumber}-${timestamp}`;
 
     // Get conversation client
@@ -397,21 +393,17 @@ export class VoiceChannel extends BaseChannel {
     );
     const aiAgentParticipantId = aiAgentParticipant.id;
 
-    // Build action attribute if provided
-    const actionAttr = actionUrl ? ` action="${actionUrl}"` : '';
-
-    // Generate TwiML with custom parameters
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Connect${actionAttr}>
-        <ConversationRelay url="${websocketUrl}" welcomeGreeting="${welcomeGreeting}">
-            <Parameter name="conversation_id" value="${conversationId}" />
-            <Parameter name="profile_id" value="${profileId}" />
-            <Parameter name="customer_participant_id" value="${customerParticipantId}" />
-            <Parameter name="ai_agent_participant_id" value="${aiAgentParticipantId}" />
-        </ConversationRelay>
-    </Connect>
-</Response>`;
+    // Delegate TwiML generation to connectConversationRelay
+    return this.connectConversationRelay(
+      conversationRelayConfig,
+      {
+        conversation_id: conversationId,
+        profile_id: profileId,
+        customer_participant_id: customerParticipantId,
+        ai_agent_participant_id: aiAgentParticipantId,
+      },
+      actionUrl ? { actionUrl } : undefined
+    );
   }
 
   // =========================================================================
@@ -545,35 +537,86 @@ export class VoiceChannel extends BaseChannel {
   }
 
   // =========================================================================
-  // TwiML Generation (legacy, without conversation creation)
+  // ConversationRelay TwiML Generation
   // =========================================================================
 
   /**
-   * Generate TwiML for incoming calls
+   * Generate TwiML to connect a call to ConversationRelay.
+   * Validates configuration with Zod before generating TwiML.
+   *
+   * @param config - ConversationRelay configuration (url, transcription, TTS, etc.)
+   * @param parameters - Optional custom parameters to pass via TwiML <Parameter> elements
+   * @param options - Optional settings for the Connect verb (e.g., actionUrl)
+   * @returns TwiML XML string
+   * @throws {Error} if config validation fails
    */
-  public generateTwiML(options: TwiMLOptions): string {
-    const { websocketUrl, customParameters, welcomeGreeting } = options;
+  public connectConversationRelay(
+    config: ConversationRelayConfig,
+    parameters?: CustomParameters,
+    options?: { actionUrl?: string }
+  ): string {
+    // Validate configuration with Zod schema (consistent with project pattern)
+    const validationResult = ConversationRelayConfigSchema.safeParse(config);
 
-    let customParamsXml = '';
-    if (customParameters) {
-      for (const [key, value] of Object.entries(customParameters)) {
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues
+        .map(issue => `${issue.path.join('.')}: ${issue.message}`)
+        .join(', ');
+      throw new Error(`Invalid ConversationRelay configuration: ${errorMessage}`);
+    }
+
+    const validatedConfig = validationResult.data;
+
+    // Extract languages array (child elements, not attributes)
+    const { languages, ...conversationRelayAttributes } = validatedConfig;
+
+    // Filter out undefined values to keep TwiML clean
+    const filteredConfig = this.filterUnsetValues(conversationRelayAttributes);
+
+    // Build TwiML using SDK
+    const response = new VoiceResponse();
+    const connect = response.connect(options?.actionUrl ? { action: options.actionUrl } : {});
+    const relay = connect.conversationRelay(filteredConfig);
+
+    // Add language configurations as child <Language> elements
+    if (languages && languages.length > 0) {
+      for (const lang of languages) {
+        // Filter out undefined values to satisfy exactOptionalPropertyTypes
+        // Type assertion is safe here because we've already validated with Zod
+        const filteredLang = this.filterUnsetValues(lang);
+        relay.language(filteredLang as Parameters<typeof relay.language>[0]);
+      }
+    }
+
+    // Validate and add custom parameters as child <Parameter> elements
+    if (parameters) {
+      const paramResult = CustomParametersSchema.safeParse(parameters);
+      if (!paramResult.success) {
+        throw new Error(`Invalid custom parameters: ${paramResult.error.message}`);
+      }
+
+      for (const [name, value] of Object.entries(paramResult.data)) {
         if (value !== undefined) {
-          customParamsXml += `<Parameter name="${key}" value="${value}" />`;
+          relay.parameter({ name, value });
         }
       }
     }
 
-    // Build welcomeGreeting attribute if provided
-    const greetingAttr = welcomeGreeting ? ` welcomeGreeting="${welcomeGreeting}"` : '';
+    return response.toString();
+  }
 
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <ConversationRelay url="${websocketUrl}"${greetingAttr}>
-      ${customParamsXml}
-    </ConversationRelay>
-  </Connect>
-</Response>`;
+  /**
+   * Filter out undefined values from configuration object.
+   * Keeps null, false, 0, and empty strings as they are valid values.
+   */
+  private filterUnsetValues(config: Record<string, unknown>): Record<string, unknown> {
+    const filtered: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(config)) {
+      if (value !== undefined) {
+        filtered[key] = value;
+      }
+    }
+    return filtered;
   }
 
   /**

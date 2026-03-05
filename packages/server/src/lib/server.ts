@@ -15,6 +15,7 @@ import {
   VoiceServerConfigSchema,
   ConversationRelayCallbackPayload,
   ConversationRelayCallbackPayloadSchema,
+  ConversationRelayConfig,
 } from '@twilio/tac-core';
 import { TAC, VoiceChannel, SMSChannel } from '@twilio/tac-core';
 
@@ -31,15 +32,15 @@ export interface TACServerConfig {
   /** Custom webhook paths */
   webhookPaths?: {
     sms?: string;
-    voice?: string;
     twiml?: string;
+    ws?: string;
     conversationRelayCallback?: string;
     /** Path for Conversation Intelligence webhook (optional - only registered if provided) */
     cintel?: string;
   };
 
-  /** Welcome greeting for voice calls (played when call connects) */
-  welcomeGreeting?: string;
+  /** ConversationRelay configuration (welcomeGreeting, transcription, TTS, interaction settings, etc.) */
+  conversationRelayConfig?: Partial<Omit<ConversationRelayConfig, 'url'>>;
 
   /** Handler for voice handoff requests (returns TwiML string) */
   handoffHandler?: (payload: ConversationRelayCallbackPayload) => Promise<string>;
@@ -58,18 +59,16 @@ const DEFAULT_CONFIG = {
   voice: {
     host: '0.0.0.0',
     port: 3000,
-    path: '/twiml',
-    webhookPath: '/voice',
   },
   webhookPaths: {
-    sms: '/sms',
-    voice: '/voice',
+    sms: '/webhook',
     twiml: '/twiml',
+    ws: '/ws',
     conversationRelayCallback: '/conversation-relay-callback',
   },
   development: false,
   validateWebhooks: true,
-} satisfies Omit<TACServerConfig, 'fastify' | 'welcomeGreeting' | 'handoffHandler'>;
+} satisfies Omit<TACServerConfig, 'fastify' | 'conversationRelayConfig' | 'handoffHandler'>;
 
 /**
  * Batteries-included Fastify server for TAC
@@ -81,9 +80,9 @@ export class TACServer {
   private readonly fastify: FastifyInstance;
   private readonly tac: TAC;
   private readonly config: Required<
-    Omit<TACServerConfig, 'fastify' | 'welcomeGreeting' | 'handoffHandler'>
+    Omit<TACServerConfig, 'fastify' | 'conversationRelayConfig' | 'handoffHandler'>
   > & {
-    welcomeGreeting?: string;
+    conversationRelayConfig?: Partial<Omit<ConversationRelayConfig, 'url'>>;
     handoffHandler?: (payload: ConversationRelayCallbackPayload) => Promise<string>;
   };
 
@@ -196,7 +195,7 @@ export class TACServer {
       }
     );
 
-    // Voice TwiML endpoint (POST - Twilio sends form data)
+    // Voice webhook (POST - Twilio calls this when an incoming call arrives)
     this.fastify.post(
       this.config.webhookPaths.twiml || '/twiml',
       async (request: FastifyRequest, reply: FastifyReply) => {
@@ -217,17 +216,19 @@ export class TACServer {
           // Generate WebSocket URL
           const protocol = (request.headers['x-forwarded-proto'] as string) || 'http';
           const host = request.headers.host as string;
-          const websocketUrl = `${protocol === 'https' ? 'wss' : 'ws'}://${host}${this.config.webhookPaths.voice || '/voice'}`;
+          const websocketUrl = `${protocol === 'https' ? 'wss' : 'ws'}://${host}${this.config.webhookPaths.ws || '/ws'}`;
           const callbackUrl = `${protocol}://${host}${this.config.webhookPaths.conversationRelayCallback || '/conversation-relay-callback'}`;
 
           // Use handleIncomingCall to create conversation and generate TwiML
           const twiml = await voiceChannel.handleIncomingCall({
-            websocketUrl,
             toNumber,
             fromNumber,
             callSid,
             actionUrl: callbackUrl,
-            ...(this.config.welcomeGreeting && { welcomeGreeting: this.config.welcomeGreeting }),
+            conversationRelayConfig: {
+              url: websocketUrl,
+              ...this.config.conversationRelayConfig,
+            },
           });
 
           await reply.type('application/xml').send(twiml);
@@ -287,7 +288,7 @@ export class TACServer {
     // Voice WebSocket endpoint
     await this.fastify.register(fastify => {
       fastify.get(
-        this.config.webhookPaths.voice || '/voice',
+        this.config.webhookPaths.ws || '/ws',
         { websocket: true },
         (socket: WebSocket) => {
           const voiceChannel = this.tac.getChannel<VoiceChannel>('voice');
@@ -392,8 +393,8 @@ export class TACServer {
           host: voiceConfig.host,
           port: voiceConfig.port,
           sms_webhook: this.config.webhookPaths.sms,
-          twiml_path: this.config.webhookPaths.twiml,
-          voice_websocket: this.config.webhookPaths.voice,
+          twiml_webhook: this.config.webhookPaths.twiml,
+          ws_websocket: this.config.webhookPaths.ws,
           conversation_relay_callback: this.config.webhookPaths.conversationRelayCallback,
           ...(this.config.webhookPaths.cintel && {
             cintel_webhook: this.config.webhookPaths.cintel,

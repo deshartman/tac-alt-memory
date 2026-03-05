@@ -10,9 +10,10 @@ twilio-agent-connect-typescript/
 │   ├── core/                # @twilio/tac-core
 │   ├── tools/               # @twilio/tac-tools
 │   └── server/              # @twilio/tac-server
-├── examples/                # Example applications
-│   ├── simple-sms-bot/
-│   └── multi-channel-demo/
+├── getting_started/         # Getting started guide and examples
+│   ├── README.md            # Step-by-step tutorial
+│   └── examples/
+│       └── openai/          # OpenAI example (SMS + Voice)
 └── package.json             # Workspace root
 ```
 
@@ -37,7 +38,7 @@ vim packages/core/src/lib/tac.ts
 npm run build
 
 # Test with examples (they automatically use your changes)
-npm run example:sms
+npm run example:getting-started
 ```
 
 ### 3. Dependency Management
@@ -105,8 +106,7 @@ npm test
 npm run test:coverage
 
 # Run examples
-npm run example:sms       # Simple SMS bot
-npm run example:multi     # Multi-channel demo
+npm run example:getting-started  # OpenAI example (SMS + Voice)
 ```
 
 ### 5. Adding New Packages
@@ -159,8 +159,8 @@ npm run example:multi     # Multi-channel demo
 
 1. **Create example directory**:
    ```bash
-   mkdir examples/my-example
-   cd examples/my-example
+   mkdir getting_started/examples/my-example
+   cd getting_started/examples/my-example
    ```
 
 2. **Create package.json with local dependencies**:
@@ -178,10 +178,10 @@ npm run example:multi     # Multi-channel demo
 
 3. **Example automatically available**:
    ```bash
-   cd ../../
+   cd ../../../
    npm install
    npm run build
-   cd examples/my-example
+   cd getting_started/examples/my-example
    npm run dev
    ```
 
@@ -226,8 +226,8 @@ We use TypeScript project references for:
 ### Reference Structure
 
 ```
-examples/simple-sms-bot → packages/server → packages/core → packages/types
-                                        ↘ packages/tools ↗
+getting_started/examples/openai → packages/server → packages/core
+                                               ↘ packages/tools ↗
 ```
 
 ## Common Issues
@@ -263,7 +263,7 @@ npm install
 npm run build
 
 # Check symlinks exist
-ls -la examples/simple-sms-bot/node_modules/@twilio/
+ls -la getting_started/examples/openai/node_modules/@twilio/
 ```
 
 ## Best Practices

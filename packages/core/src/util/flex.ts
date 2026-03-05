@@ -1,5 +1,5 @@
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
-import { HandoffData, HandoffDataSchema } from '../types/voice';
+import { HandoffData, HandoffDataSchema } from '../types/crelay';
 import { createLogger } from '../lib/logger';
 
 const logger = createLogger({ name: 'tac-flex' });
