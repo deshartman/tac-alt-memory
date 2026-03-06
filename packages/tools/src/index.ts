@@ -17,12 +17,3 @@ export {
   createKnowledgeSearchToolAsync,
   createKnowledgeTools,
 } from './built-in/knowledge';
-
-// Re-export types from the core package (excluding TACTool which we define here)
-export type {
-  ToolFunction,
-  JSONSchema,
-  OpenAITool,
-  ToolContext,
-  ToolExecutionResult,
-} from '@twilio/tac-core';

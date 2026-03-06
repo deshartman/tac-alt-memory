@@ -2,19 +2,32 @@
   "name": "twilio-agent-connect",
   "version": "1.0.0",
   "description": "Twilio Agent Connect - A TypeScript framework for building intelligent agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "cd packages/core && npx tsup && cd ../tools && npx tsup && cd ../server && npx tsup",
-    "clean": "npm run clean --workspaces --if-present",
+    "build": "tsup",
+    "clean": "rimraf dist packages/*/dist",
     "test": "vitest --run",
     "test:watch": "vitest",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts",
-    "lint:fix": "eslint packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts --fix",
-    "format": "prettier --write packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts",
-    "format:check": "prettier --check packages/*/src/**/*.ts getting_started/examples/*/src/**/*.ts",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "dev": "npm run dev --workspaces --if-present",
-    "example:getting-started": "npm run dev --workspace=tac-example-openai"
+    "lint": "eslint packages/*/src/**/*.ts src/**/*.ts",
+    "lint:fix": "eslint packages/*/src/**/*.ts src/**/*.ts --fix",
+    "format": "prettier --write packages/*/src/**/*.ts src/**/*.ts",
+    "format:check": "prettier --check packages/*/src/**/*.ts src/**/*.ts",
+    "typecheck": "tsc --noEmit",
+    "example:getting-started": "cd getting_started/examples/openai && npm install && npm run dev"
   },
   "keywords": [
     "twilio",
@@ -27,7 +40,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/twilio/twilio-agent-connect-typescript.git"
+    "url": "https://github.com/twilio-innovation/twilio-agent-connect-typescript.git"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -42,19 +55,6 @@
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
   },
-  "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=9.0.0"
-  },
-  "main": "./index.js",
-  "types": "./index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "import": "./index.js",
-      "require": "./index.js"
-    }
-  },
   "dependencies": {
     "dotenv": "^16.3.0",
     "pino": "^9.0.0",
@@ -66,5 +66,9 @@
     "fastify": "^5.6.2",
     "fastify-graceful-shutdown": "^5.0.0",
     "ws": "^8.19.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
   }
 }

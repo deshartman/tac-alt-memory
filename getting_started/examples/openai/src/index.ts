@@ -15,8 +15,8 @@ import {
   ConversationSession,
   TACMemoryResponse,
   ConversationId,
-} from '@twilio/tac-core';
-import { TACServer } from '@twilio/tac-server';
+  TACServer,
+} from 'twilio-agent-connect';
 
 // Load environment variables from parent directory
 config({ path: '../.env' });

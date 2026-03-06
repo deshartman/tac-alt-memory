@@ -17,8 +17,19 @@ export * from './conversation';
 // ConversationRelay types (Twilio Voice API)
 export * from './crelay';
 
-// Tool types
-export * from './tools';
+// Tool types (TACTool interface excluded — use the TACTool class from the tools package)
+export {
+  JSONSchemaSchema,
+  type JSONSchema,
+  type ToolFunction,
+  OpenAIToolSchema,
+  type OpenAITool,
+  type ToolContext,
+  ToolExecutionResultSchema,
+  type ToolExecutionResult,
+  BuiltInTools,
+  type BuiltInToolName,
+} from './tools';
 
 // Conversation Intelligence types
 export * from './cintel';

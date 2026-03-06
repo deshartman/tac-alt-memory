@@ -5,12 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsup && node dist/watch src/index.js",
+    "dev": "tsx watch src/index.ts",
     "build": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "twilio-agent-connect": "file:../../..",
     "dotenv": "^16.4.5",
     "openai": "^4.73.0"
   },

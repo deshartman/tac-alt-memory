@@ -13,7 +13,21 @@ This guide will walk you through setting up and running your first TAC applicati
 
 You need to create Twilio Conversation and Memory services before using TAC.
 
-Create services manually through the [Twilio Console](https://console.twilio.com/).
+**Option 1: Use the Setup Wizard (Recommended)**
+
+Use the [Twilio Setup Wizard](https://github.com/twilio-innovation/twilio-agent-connect-python/tree/main/getting_started/twilio_setup) from the Python repository to automatically create Memory and Conversation services and generate your `.env` file:
+
+```bash
+git clone https://github.com/twilio-innovation/twilio-agent-connect-python.git
+cd twilio-agent-connect-python
+make setup  # Open http://localhost:8080
+```
+
+Copy the generated `.env` file to your TypeScript project's `getting_started/examples/` directory.
+
+**Option 2: Manual Setup**
+
+You can also create services manually through the [Twilio Console](https://console.twilio.com/).
 
 **Required Services:**
 
@@ -33,7 +47,9 @@ npm run build
 
 ### Configure Environment Variables
 
-From the repository root:
+If you used the Setup Wizard, copy the generated `.env` file to `getting_started/examples/`.
+
+Otherwise, create your `.env` file manually:
 
 ```bash
 cd getting_started/examples
@@ -52,14 +68,14 @@ cd openai
 npm run dev
 ```
 
-The server will start on `http://localhost:3000`.
+The server will start on `http://localhost:8000`.
 
 ### Expose Your Server
 
 In another terminal, start ngrok:
 
 ```bash
-ngrok http 3000
+ngrok http 8000
 # Copy the ngrok URL (e.g., https://abc123.ngrok.io)
 ```
 
