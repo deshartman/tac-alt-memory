@@ -31,10 +31,10 @@ describe('Knowledge Tools', () => {
     environment: 'dev' as const,
     twilioAccountSid: 'ACtest123',
     twilioAuthToken: 'test_token_123',
+    apiKey: 'test_api_key',
+    apiToken: 'test_api_token',
     twilioPhoneNumber: '+15551234567',
     memoryStoreId: 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg',
-    memoryApiKey: 'test_api_key',
-    memoryApiToken: 'test_api_token',
     conversationServiceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
   });
 

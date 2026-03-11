@@ -6,6 +6,8 @@ describe('TAC Core', () => {
     environment: 'dev' as const,
     twilioAccountSid: 'ACtest123456789',
     twilioAuthToken: 'test_token_123',
+    apiKey: 'test_api_key',
+    apiToken: 'test_api_token',
     twilioPhoneNumber: '+15551234567',
     conversationServiceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd'
   });
@@ -70,17 +72,15 @@ describe('TAC Core', () => {
       const config = new TACConfig(getTestConfig());
       const tac = new TAC({ config });
 
-      // Memory client should be undefined when credentials not provided
+      // Memory client should be undefined when memoryStoreId not provided
       expect(tac.getMemoryClient()).toBeUndefined();
       expect(tac.getConversationClient()).toBeDefined();
     });
 
-    it('should initialize memory client when credentials are provided', () => {
+    it('should initialize memory client when memoryStoreId is provided', () => {
       const configWithMemory = {
         ...getTestConfig(),
         memoryStoreId: 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg',
-        memoryApiKey: 'test_api_key',
-        memoryApiToken: 'test_api_token',
       };
       const config = new TACConfig(configWithMemory);
       const tac = new TAC({ config });

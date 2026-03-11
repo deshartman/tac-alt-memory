@@ -28,10 +28,10 @@ describe('KnowledgeClient', () => {
     environment: 'dev' as const,
     twilioAccountSid: 'ACtest123',
     twilioAuthToken: 'test_token_123',
+    apiKey: 'test_api_key',
+    apiToken: 'test_api_token',
     twilioPhoneNumber: '+15551234567',
     memoryStoreId: 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg',
-    memoryApiKey: 'test_api_key',
-    memoryApiToken: 'test_api_token',
     conversationServiceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
   });
 
@@ -255,18 +255,10 @@ describe('KnowledgeClient', () => {
   });
 
   describe('constructor', () => {
-    it('should throw error when memory credentials are missing', () => {
-      const configWithoutCredentials = {
-        ...getTestConfig(),
-        memoryApiKey: undefined,
-        memoryApiToken: undefined,
-      };
+    it('should initialize with valid config', () => {
+      const config = new TACConfig(getTestConfig());
 
-      const config = new TACConfig(configWithoutCredentials);
-
-      expect(() => new KnowledgeClient(config)).toThrow(
-        'Memory API credentials are required for Knowledge client'
-      );
+      expect(() => new KnowledgeClient(config)).not.toThrow();
     });
   });
 });

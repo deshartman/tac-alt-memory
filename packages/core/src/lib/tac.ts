@@ -90,12 +90,13 @@ export class TAC {
 
     this.channels = new Map();
 
-    // Initialize Memory client only if all memory credentials are provided
-    if (this.config.memoryStoreId && this.config.memoryApiKey && this.config.memoryApiToken) {
+    // Initialize Memory client only if memoryStoreId is provided
+    // API credentials are always available (required at TACConfig level)
+    if (this.config.memoryStoreId) {
       this.memoryClient = new MemoryClient(this.config, this.logger.child({ component: 'memory' }));
       this.logger.info('Memory client initialized');
 
-      // Initialize Knowledge client when memory credentials are available (shares same auth)
+      // Initialize Knowledge client (uses same API credentials)
       this.knowledgeClient = new KnowledgeClient(
         this.config,
         this.logger.child({ component: 'knowledge' })

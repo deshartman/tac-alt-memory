@@ -27,10 +27,10 @@ export class TACConfig {
   public readonly environment: Environment;
   public readonly twilioAccountSid: string;
   public readonly twilioAuthToken: string;
+  public readonly apiKey: string;
+  public readonly apiToken: string;
   public readonly twilioPhoneNumber: string;
   public readonly memoryStoreId?: string;
-  public readonly memoryApiKey?: string;
-  public readonly memoryApiToken?: string;
   public readonly traitGroups?: string[];
   public readonly conversationServiceId: string;
   public readonly voicePublicDomain?: string;
@@ -52,15 +52,11 @@ export class TACConfig {
     this.environment = validatedConfig.environment;
     this.twilioAccountSid = validatedConfig.twilioAccountSid;
     this.twilioAuthToken = validatedConfig.twilioAuthToken;
+    this.apiKey = validatedConfig.apiKey;
+    this.apiToken = validatedConfig.apiToken;
     this.twilioPhoneNumber = validatedConfig.twilioPhoneNumber;
     if (validatedConfig.memoryStoreId) {
       this.memoryStoreId = validatedConfig.memoryStoreId;
-    }
-    if (validatedConfig.memoryApiKey) {
-      this.memoryApiKey = validatedConfig.memoryApiKey;
-    }
-    if (validatedConfig.memoryApiToken) {
-      this.memoryApiToken = validatedConfig.memoryApiToken;
     }
     if (validatedConfig.traitGroups) {
       this.traitGroups = validatedConfig.traitGroups;
@@ -90,10 +86,10 @@ export class TACConfig {
    * - ENVIRONMENT: TAC environment (dev, stage, or prod) - defaults to 'prod'
    * - TWILIO_ACCOUNT_SID: Twilio Account SID (required)
    * - TWILIO_AUTH_TOKEN: Twilio Auth Token (required)
+   * - API_KEY: API Key (required)
+   * - API_TOKEN: API Token (required)
    * - TWILIO_PHONE_NUMBER: Twilio Phone Number (required)
    * - MEMORY_STORE_ID: Memory Store ID (optional, for Twilio Memory)
-   * - MEMORY_API_KEY: Memory API Key (optional, required if using Memory)
-   * - MEMORY_API_TOKEN: Memory API Token (optional, required if using Memory)
    * - TRAIT_GROUPS: Comma-separated trait group names (optional, for profile fetching)
    * - CONVERSATION_SERVICE_ID: Twilio Conversation Configuration ID (required)
    * - VOICE_PUBLIC_DOMAIN: Public domain for voice webhooks (optional)
@@ -117,6 +113,8 @@ export class TACConfig {
     const requiredVars = [
       { key: EnvironmentVariables.TWILIO_ACCOUNT_SID, name: 'TWILIO_ACCOUNT_SID' },
       { key: EnvironmentVariables.TWILIO_AUTH_TOKEN, name: 'TWILIO_AUTH_TOKEN' },
+      { key: EnvironmentVariables.API_KEY, name: 'API_KEY' },
+      { key: EnvironmentVariables.API_TOKEN, name: 'API_TOKEN' },
       { key: EnvironmentVariables.TWILIO_PHONE_NUMBER, name: 'TWILIO_PHONE_NUMBER' },
       { key: EnvironmentVariables.CONVERSATION_SERVICE_ID, name: 'CONVERSATION_SERVICE_ID' },
     ];
@@ -132,10 +130,10 @@ export class TACConfig {
       environment: (process.env[EnvironmentVariables.ENVIRONMENT] ?? 'prod') as Environment,
       twilioAccountSid: process.env[EnvironmentVariables.TWILIO_ACCOUNT_SID]!,
       twilioAuthToken: process.env[EnvironmentVariables.TWILIO_AUTH_TOKEN]!,
+      apiKey: process.env[EnvironmentVariables.API_KEY]!,
+      apiToken: process.env[EnvironmentVariables.API_TOKEN]!,
       twilioPhoneNumber: process.env[EnvironmentVariables.TWILIO_PHONE_NUMBER]!,
       memoryStoreId: process.env[EnvironmentVariables.MEMORY_STORE_ID],
-      memoryApiKey: process.env[EnvironmentVariables.MEMORY_API_KEY],
-      memoryApiToken: process.env[EnvironmentVariables.MEMORY_API_TOKEN],
       traitGroups: process.env[EnvironmentVariables.TRAIT_GROUPS]?.split(','),
       conversationServiceId: process.env[EnvironmentVariables.CONVERSATION_SERVICE_ID]!,
       voicePublicDomain: process.env[EnvironmentVariables.VOICE_PUBLIC_DOMAIN],

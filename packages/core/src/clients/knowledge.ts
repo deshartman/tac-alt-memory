@@ -30,17 +30,10 @@ export class KnowledgeClient {
   constructor(config: TACConfig, logger?: Logger) {
     this.baseUrl = config.knowledgeApiUrl;
 
-    // Reuse Memory API credentials (same as Python)
-    if (!config.memoryApiKey || !config.memoryApiToken) {
-      throw new Error(
-        'Memory API credentials are required for Knowledge client. ' +
-          'Please set MEMORY_API_KEY and MEMORY_API_TOKEN environment variables.'
-      );
-    }
-
+    // Use API credentials (api_key/api_token)
     this.credentials = {
-      username: config.memoryApiKey,
-      password: config.memoryApiToken,
+      username: config.apiKey,
+      password: config.apiToken,
     };
     const baseLogger = logger || createLogger({ name: 'tac-knowledge' });
     this.logger = baseLogger.child({ client: 'knowledge' });

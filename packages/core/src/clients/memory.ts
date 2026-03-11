@@ -38,17 +38,10 @@ export class MemoryClient {
   constructor(config: TACConfig, logger?: Logger) {
     this.baseUrl = config.memoryApiUrl;
 
-    // Use Memory API credentials (api_key/api_token), not Twilio account credentials
-    if (!config.memoryApiKey || !config.memoryApiToken) {
-      throw new Error(
-        'Memory API credentials are required. ' +
-          'Please set MEMORY_API_KEY and MEMORY_API_TOKEN environment variables.'
-      );
-    }
-
+    // Use API credentials (api_key/api_token)
     this.credentials = {
-      username: config.memoryApiKey,
-      password: config.memoryApiToken,
+      username: config.apiKey,
+      password: config.apiToken,
     };
     const baseLogger = logger || createLogger({ name: 'tac-memory' });
     this.logger = baseLogger.child({ client: 'memory' });
