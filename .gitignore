@@ -10,3 +10,4 @@ getting_started/examples/*/dist/
 # IDE
 .idea/
 .vscode/
+.claude/
