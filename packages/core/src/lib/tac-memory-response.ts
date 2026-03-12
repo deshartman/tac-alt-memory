@@ -15,24 +15,24 @@ function isMemoryRetrievalResponse(
  * Unified response wrapper for TAC.retrieveMemory().
  *
  * Provides a consistent interface for accessing memory data regardless of whether
- * Memory API is configured or falling back to Maestro Communications API.
+ * Memory API is configured or falling back to Conversations API.
  *
  * Memory configured:
  * - observations, summaries, communications all populated
  * - communications include Memory-specific fields (author id, name, type, profile_id)
  *
- * Maestro fallback:
+ * Conversations API fallback:
  * - observations and summaries are empty arrays
- * - communications include Maestro-specific fields (conversation_id, account_id, etc.)
+ * - communications include Conversations API-specific fields (conversation_id, account_id, etc.)
  */
 export class TACMemoryResponse {
   private readonly _data: MemoryRetrievalResponse | Communication[];
   private readonly _communications: TACCommunication[];
 
   /**
-   * Initialize wrapper with either Memory or Maestro data.
+   * Initialize wrapper with either Memory or Conversations API data.
    *
-   * @param data - Either MemoryRetrievalResponse (Memory) or Communication[] (Maestro)
+   * @param data - Either MemoryRetrievalResponse (Memory) or Communication[] (Conversations API)
    */
   constructor(data: MemoryRetrievalResponse | Communication[]) {
     this._data = data;
@@ -50,7 +50,7 @@ export class TACMemoryResponse {
   /**
    * Get observation memories.
    *
-   * @returns List of observations if Memory is configured, empty array for Maestro fallback
+   * @returns List of observations if Memory is configured, empty array for Conversations API fallback
    */
   get observations(): ObservationInfo[] {
     if (isMemoryRetrievalResponse(this._data)) {
@@ -62,7 +62,7 @@ export class TACMemoryResponse {
   /**
    * Get summary memories.
    *
-   * @returns List of summaries if Memory is configured, empty array for Maestro fallback
+   * @returns List of summaries if Memory is configured, empty array for Conversations API fallback
    */
   get summaries(): SummaryInfo[] {
     if (isMemoryRetrievalResponse(this._data)) {
@@ -75,7 +75,7 @@ export class TACMemoryResponse {
    * Get communications in unified format with all available fields.
    *
    * Communications are converted to a common format during initialization that includes
-   * all fields from both Memory and Maestro APIs. Fields not available from a particular
+   * all fields from both Memory and Conversations API. Fields not available from a particular
    * API will be undefined.
    *
    * @returns List of unified communications with all available fields
@@ -88,7 +88,7 @@ export class TACMemoryResponse {
    * Check if Memory API is configured and providing full features.
    *
    * @returns true if Memory is configured (observations/summaries available),
-   *          false if using Maestro fallback (only communications available)
+   *          false if using Conversations API fallback (only communications available)
    */
   get hasMemoryFeatures(): boolean {
     return isMemoryRetrievalResponse(this._data);

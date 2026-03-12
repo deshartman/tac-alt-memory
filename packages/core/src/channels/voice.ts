@@ -95,12 +95,12 @@ export class VoiceChannel extends BaseChannel {
   }
 
   /**
-   * Process webhook - Voice channel doesn't use traditional webhooks,
-   * but this method is required by the base class
+   * Process Voice webhook - delegates to Conversations webhook handler
+   * Voice receives Conversations events for conversation lifecycle
    */
-  public processWebhook(_payload: unknown): Promise<void> {
-    this.logger.warn('processWebhook called but Voice channel uses WebSocket connections');
-    return Promise.resolve();
+  public async processWebhook(payload: unknown): Promise<void> {
+    // Delegate to base class Conversations webhook handler
+    await this.processConversationsWebhook(payload);
   }
 
   /**
@@ -617,22 +617,6 @@ export class VoiceChannel extends BaseChannel {
       }
     }
     return filtered;
-  }
-
-  /**
-   * Extract conversation ID - Not applicable for Voice channel
-   */
-  protected extractConversationId(_payload: unknown): ConversationId | null {
-    // Voice channel doesn't use traditional webhooks
-    return null;
-  }
-
-  /**
-   * Extract profile ID - Not applicable for Voice channel
-   */
-  protected extractProfileId(_payload: unknown): ProfileId | null {
-    // Voice channel doesn't use traditional webhooks
-    return null;
   }
 
   /**

@@ -35,7 +35,7 @@ export const TACParticipantTypeSchema = z.enum(['HUMAN_AGENT', 'CUSTOMER', 'AI_A
 export type TACParticipantType = z.infer<typeof TACParticipantTypeSchema>;
 
 /**
- * Unified author model with all fields from both Memory and Maestro APIs.
+ * Unified author model with all fields from both Memory and Conversations API.
  *
  * Fields not available from a particular API will be undefined.
  */
@@ -44,7 +44,7 @@ export const TACCommunicationAuthorSchema = z.object({
   address: z.string(),
   channel: TACChannelTypeSchema,
 
-  // Maestro-only fields
+  // Conversations API-only fields
   participant_id: z.string().optional(),
   delivery_status: TACDeliveryStatusSchema.optional(),
 
@@ -58,21 +58,21 @@ export const TACCommunicationAuthorSchema = z.object({
 export type TACCommunicationAuthor = z.infer<typeof TACCommunicationAuthorSchema>;
 
 /**
- * Unified content model with all fields from both Memory and Maestro APIs.
+ * Unified content model with all fields from both Memory and Conversations API.
  */
 export const TACCommunicationContentSchema = z.object({
-  // Maestro-only: content type discriminator
+  // Conversations API-only: content type discriminator
   type: z.enum(['TEXT', 'TRANSCRIPTION']).optional(),
   // Both APIs: message text (optional in unified model to handle both)
   text: z.string().optional(),
-  // Maestro-only: transcription metadata
+  // Conversations API-only: transcription metadata
   transcription: TranscriptionSchema.optional(),
 });
 
 export type TACCommunicationContent = z.infer<typeof TACCommunicationContentSchema>;
 
 /**
- * Unified communication model with all fields from both Memory and Maestro APIs.
+ * Unified communication model with all fields from both Memory and Conversations API.
  *
  * Provides complete access to all communication fields regardless of the source.
  * Fields not available from a particular API will be undefined.
@@ -87,7 +87,7 @@ export const TACCommunicationSchema = z.object({
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
 
-  // Maestro-only fields
+  // Conversations API-only fields
   conversation_id: z.string().optional(),
   account_id: z.string().optional(),
 });

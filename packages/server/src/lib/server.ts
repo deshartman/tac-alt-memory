@@ -16,8 +16,12 @@ import {
   ConversationRelayCallbackPayload,
   ConversationRelayCallbackPayloadSchema,
   ConversationRelayConfig,
+  ConversationsWebhookPayloadSchema,
+  BaseChannel,
+  ConversationId,
+  TAC,
+  VoiceChannel,
 } from '@twilio/tac-core';
-import { TAC, VoiceChannel, SMSChannel } from '@twilio/tac-core';
 
 /**
  * Server configuration options
@@ -31,11 +35,10 @@ export interface TACServerConfig {
 
   /** Custom webhook paths */
   webhookPaths?: {
-    sms?: string;
     twiml?: string;
     ws?: string;
+    conversation?: string;
     conversationRelayCallback?: string;
-    /** Path for Conversation Intelligence webhook (optional - only registered if provided) */
     cintel?: string;
   };
 
@@ -61,9 +64,9 @@ const DEFAULT_CONFIG = {
     port: 3000,
   },
   webhookPaths: {
-    sms: '/webhook',
     twiml: '/twiml',
     ws: '/ws',
+    conversation: '/conversation',
     conversationRelayCallback: '/conversation-relay-callback',
   },
   development: false,
@@ -169,23 +172,127 @@ export class TACServer {
    * Setup routes
    */
   private async setupRoutes(): Promise<void> {
-    // SMS webhook
+    // Conversations webhook (unified endpoint for all channels)
     this.fastify.post(
-      this.config.webhookPaths.sms || '/sms',
+      this.config.webhookPaths.conversation || '/conversation',
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-          const smsChannel = this.tac.getChannel<SMSChannel>('sms');
+          // Validate webhook payload with Zod schema
+          const parseResult = ConversationsWebhookPayloadSchema.safeParse(request.body);
 
-          if (!smsChannel) {
-            await reply.code(500).send({ error: 'SMS channel not available' });
+          if (!parseResult.success) {
+            this.fastify.log.error(
+              { errors: parseResult.error.errors },
+              'Invalid Conversations webhook payload'
+            );
+            await reply.code(400).send({ error: 'Invalid webhook payload' });
             return;
           }
 
-          await smsChannel.processWebhook(request.body);
+          const payload = parseResult.data;
+          const webhookData = payload.data;
+          const author = 'author' in webhookData ? webhookData.author : undefined;
+          const channelString = author?.channel?.toLowerCase();
+
+          // Handle lifecycle events without channel information
+          // These events (CONVERSATION_CREATED, CONVERSATION_UPDATED) are container-level
+          // and need to be routed to the channel that owns the conversation
+          if (!channelString) {
+            const eventType = payload.eventType;
+            // Extract conversation ID - all webhook data types have conversationId
+            const conversationId = webhookData.conversationId;
+
+            // For CONVERSATION_UPDATED and CONVERSATION_CREATED, find the owning channel
+            if (eventType === 'CONVERSATION_UPDATED' || eventType === 'CONVERSATION_CREATED') {
+              // Find which channel owns this conversation
+              const channels: BaseChannel[] = this.tac.getChannels();
+              let targetChannel: BaseChannel | undefined;
+
+              for (const channel of channels) {
+                // Cast to ConversationId for branded type compatibility
+                if (channel.isConversationActive(conversationId as ConversationId)) {
+                  targetChannel = channel;
+                  break;
+                }
+              }
+
+              if (targetChannel) {
+                this.fastify.log.info(
+                  {
+                    event_type: eventType,
+                    conversation_id: conversationId,
+                    channel: targetChannel.channelType,
+                  },
+                  `→ Routing lifecycle event ${eventType} to ${targetChannel.channelType} channel`
+                );
+                await targetChannel.processWebhook(payload);
+                await reply.code(200).send({ status: 'ok' });
+                return;
+              } else {
+                // Conversation not found in any channel - this is expected for CONVERSATION_CREATED
+                // before first communication, so we just acknowledge it
+                this.fastify.log.info(
+                  {
+                    event_type: eventType,
+                    conversation_id: conversationId,
+                  },
+                  `✓ Lifecycle event ${eventType} acknowledged (conversation not yet in channel)`
+                );
+                await reply.code(200).send({ status: 'ok' });
+                return;
+              }
+            }
+
+            // For other lifecycle events without channel info, acknowledge but don't process
+            this.fastify.log.info(
+              {
+                event_type: eventType,
+                conversation_id: conversationId,
+              },
+              `✓ Skipped ${eventType} event (no channel info)`
+            );
+
+            await reply.code(200).send({ status: 'ok' });
+            return;
+          }
+
+          // Validate channel type
+          const isValidChannel = (ch: string): ch is 'sms' | 'voice' => {
+            return ch === 'sms' || ch === 'voice';
+          };
+
+          if (!isValidChannel(channelString)) {
+            this.fastify.log.warn({ channel: channelString }, 'Unknown channel type in webhook');
+            await reply.code(400).send({ error: 'Unknown channel type' });
+            return;
+          }
+
+          // Route to appropriate channel
+          const targetChannel = this.tac.getChannel(channelString);
+          if (!targetChannel) {
+            this.fastify.log.error({ channel: channelString }, 'Channel not registered');
+            await reply.code(500).send({ error: 'Channel not available' });
+            return;
+          }
+
+          const eventType = payload.eventType;
+          const conversationId = webhookData.conversationId || webhookData.id;
+
+          this.fastify.log.info(
+            {
+              event_type: eventType,
+              conversation_id: conversationId,
+              channel: channelString,
+            },
+            `→ Routing ${eventType} to ${channelString} channel`
+          );
+
+          await targetChannel.processWebhook(payload);
           await reply.code(200).send({ status: 'ok' });
         } catch (error) {
           this.fastify.log.error(
-            'SMS webhook error: ' + (error instanceof Error ? error.message : String(error))
+            'Conversations webhook error: ' +
+              (error instanceof Error ? error.message : String(error))
           );
           await reply.code(500).send({
             error: 'Internal server error',
@@ -200,18 +307,18 @@ export class TACServer {
       this.config.webhookPaths.twiml || '/twiml',
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
+          // Extract form data from POST body
+          const formData = request.body as Record<string, string>;
+          const fromNumber = formData['From'] || '';
+          const toNumber = formData['To'] || '';
+          const callSid = formData['CallSid'] || '';
+
           const voiceChannel = this.tac.getChannel<VoiceChannel>('voice');
 
           if (!voiceChannel) {
             await reply.code(500).send({ error: 'Voice channel not available' });
             return;
           }
-
-          // Extract form data from POST body
-          const formData = request.body as Record<string, string>;
-          const fromNumber = formData['From'] || '';
-          const toNumber = formData['To'] || '';
-          const callSid = formData['CallSid'] || '';
 
           // Generate WebSocket URL
           const protocol = (request.headers['x-forwarded-proto'] as string) || 'http';
@@ -392,9 +499,9 @@ export class TACServer {
         {
           host: voiceConfig.host,
           port: voiceConfig.port,
-          sms_webhook: this.config.webhookPaths.sms,
           twiml_webhook: this.config.webhookPaths.twiml,
           ws_websocket: this.config.webhookPaths.ws,
+          conversation_webhook: this.config.webhookPaths.conversation,
           conversation_relay_callback: this.config.webhookPaths.conversationRelayCallback,
           ...(this.config.webhookPaths.cintel && {
             cintel_webhook: this.config.webhookPaths.cintel,

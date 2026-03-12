@@ -431,6 +431,13 @@ export class TAC {
   }
 
   /**
+   * Get all registered channels
+   */
+  public getChannels(): BaseChannel[] {
+    return Array.from(this.channels.values());
+  }
+
+  /**
    * Get configuration
    */
   public getConfig(): TACConfig {

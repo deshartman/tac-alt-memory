@@ -1,4 +1,15 @@
-import { ConversationSession, ChannelType, ConversationId, ProfileId } from '../types/index';
+import {
+  ConversationSession,
+  ChannelType,
+  ConversationId,
+  ProfileId,
+  ConversationsWebhookPayload,
+  CommunicationWebhookPayload,
+  ConversationWebhookPayload,
+  ParticipantWebhookPayload,
+  isConversationId,
+  isProfileId,
+} from '../types/index';
 import { TACConfig } from '../lib/config';
 import { ConversationClient } from '../clients/conversation';
 import { Logger } from '../lib/logger';
@@ -63,6 +74,230 @@ export abstract class BaseChannel {
    * Process incoming webhook data (implemented by subclasses)
    */
   public abstract processWebhook(payload: unknown): Promise<void>;
+
+  /**
+   * Process Conversations webhook
+   * This is the default implementation that handles standard Conversations events.
+   * Channels can override to add channel-specific behavior.
+   */
+  public async processConversationsWebhook(payload: unknown): Promise<void> {
+    this.logger.debug(
+      { operation: 'conversations_webhook_processing', payload },
+      'Processing Conversations webhook'
+    );
+
+    try {
+      if (!this.validateConversationsWebhookPayload(payload)) {
+        throw new Error('Invalid Conversations webhook payload');
+      }
+
+      // After validation, payload is ConversationsWebhookPayload
+      const eventType = payload.eventType;
+      const conversationId = payload.data.conversationId ?? payload.data.id;
+
+      this.logger.info(
+        {
+          event_type: eventType,
+          conversation_id: conversationId,
+          channel: this.channelType,
+        },
+        'Processing Conversations webhook event'
+      );
+
+      switch (eventType) {
+        case 'CONVERSATION_CREATED':
+          this.handleConversationCreated(payload);
+          break;
+
+        case 'PARTICIPANT_ADDED':
+          this.handleParticipantAdded(payload);
+          break;
+
+        case 'PARTICIPANT_UPDATED':
+          this.handleParticipantUpdated(payload);
+          break;
+
+        case 'PARTICIPANT_REMOVED':
+          this.handleParticipantRemoved(payload);
+          break;
+
+        case 'COMMUNICATION_CREATED':
+          await this.handleCommunicationCreated(payload);
+          break;
+
+        case 'COMMUNICATION_UPDATED':
+          await this.handleCommunicationUpdated(payload);
+          break;
+
+        case 'CONVERSATION_UPDATED':
+          await this.handleConversationUpdated(payload);
+          break;
+
+        default:
+          this.logger.warn(
+            {
+              event_type: eventType,
+              conversation_id: conversationId,
+              channel: this.channelType,
+            },
+            'Unhandled Conversations event type'
+          );
+      }
+    } catch (error) {
+      this.logger.error(
+        { err: error, operation: 'conversations_webhook_processing' },
+        'Conversations webhook processing error'
+      );
+      this.handleError(error instanceof Error ? error : new Error(String(error)), { payload });
+    }
+  }
+
+  /**
+   * Validate Conversations webhook payload structure
+   */
+  protected validateConversationsWebhookPayload(
+    payload: unknown
+  ): payload is ConversationsWebhookPayload {
+    if (!this.validateWebhookPayload(payload)) {
+      return false;
+    }
+
+    const webhookData = payload as Record<string, unknown>;
+    return (
+      typeof webhookData === 'object' &&
+      typeof webhookData.eventType === 'string' &&
+      webhookData.eventType.length > 0
+    );
+  }
+
+  /**
+   * Handle CONVERSATION_CREATED event
+   */
+  protected handleConversationCreated(payload: ConversationWebhookPayload): void {
+    const conversationId = this.extractConversationId(payload);
+    const profileId = this.extractProfileId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in CONVERSATION_CREATED event');
+    }
+
+    this.startConversation(conversationId, profileId ?? undefined, payload.data.serviceId);
+  }
+
+  /**
+   * Handle PARTICIPANT_ADDED event
+   */
+  protected handleParticipantAdded(payload: ParticipantWebhookPayload): void {
+    const conversationId = this.extractConversationId(payload);
+    const profileId = this.extractProfileId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in PARTICIPANT_ADDED event');
+    }
+
+    // Update or initialize conversation
+    if (this.isConversationActive(conversationId)) {
+      const session = this.getConversationSession(conversationId);
+      if (session && profileId) {
+        session.profile_id = profileId;
+      }
+      if (session && payload.data.serviceId) {
+        session.service_id = payload.data.serviceId;
+      }
+    } else {
+      this.startConversation(conversationId, profileId ?? undefined, payload.data.serviceId);
+    }
+  }
+
+  /**
+   * Handle PARTICIPANT_UPDATED event
+   */
+  protected handleParticipantUpdated(payload: ParticipantWebhookPayload): void {
+    const conversationId = this.extractConversationId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in PARTICIPANT_UPDATED event');
+    }
+
+    this.logger.debug(
+      { conversation_id: conversationId, participant_type: payload.data.participantType },
+      'Participant updated'
+    );
+  }
+
+  /**
+   * Handle PARTICIPANT_REMOVED event
+   */
+  protected handleParticipantRemoved(payload: ParticipantWebhookPayload): void {
+    const conversationId = this.extractConversationId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in PARTICIPANT_REMOVED event');
+    }
+
+    this.logger.info(
+      { conversation_id: conversationId, participant_type: payload.data.participantType },
+      'Participant removed from conversation'
+    );
+  }
+
+  /**
+   * Handle COMMUNICATION_CREATED event
+   * Override in channel-specific classes to add message handling logic
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
+  protected async handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void> {
+    const conversationId = this.extractConversationId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in COMMUNICATION_CREATED event');
+    }
+
+    // Initialize conversation if needed
+    if (!this.isConversationActive(conversationId)) {
+      const profileId = this.extractProfileId(payload);
+      this.startConversation(conversationId, profileId ?? undefined, payload.data.serviceId);
+    }
+
+    // Channels override this to add message-specific logic
+  }
+
+  /**
+   * Handle COMMUNICATION_UPDATED event
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
+  protected async handleCommunicationUpdated(payload: CommunicationWebhookPayload): Promise<void> {
+    const conversationId = this.extractConversationId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in COMMUNICATION_UPDATED event');
+    }
+
+    this.logger.debug(
+      { conversation_id: conversationId, communication_id: payload.data.id },
+      'Communication updated'
+    );
+  }
+
+  /**
+   * Handle CONVERSATION_UPDATED event
+   */
+  protected async handleConversationUpdated(payload: ConversationWebhookPayload): Promise<void> {
+    const conversationId = this.extractConversationId(payload);
+
+    if (!conversationId) {
+      throw new Error('Missing conversation ID in CONVERSATION_UPDATED event');
+    }
+
+    // Check if conversation is closed
+    if (payload.data.status === 'CLOSED') {
+      this.logger.info(
+        { conversation_id: conversationId, status: payload.data.status },
+        'Conversation closed by Conversations Service'
+      );
+      await this.endConversation(conversationId);
+    }
+  }
 
   /**
    * Send a response back to the user (implemented by subclasses)
@@ -198,14 +433,38 @@ export abstract class BaseChannel {
   }
 
   /**
-   * Extract conversation ID from webhook payload (implemented by subclasses)
+   * Extract conversation ID from Conversations webhook payload
    */
-  protected abstract extractConversationId(payload: unknown): ConversationId | null;
+  protected extractConversationId(payload: unknown): ConversationId | null {
+    if (!this.validateConversationsWebhookPayload(payload)) {
+      return null;
+    }
+
+    const conversationId = payload.data?.conversationId || payload.data?.id;
+
+    if (conversationId && typeof conversationId === 'string' && isConversationId(conversationId)) {
+      return conversationId;
+    }
+
+    return null;
+  }
 
   /**
-   * Extract profile ID from webhook payload (implemented by subclasses)
+   * Extract profile ID from Conversations webhook payload
    */
-  protected abstract extractProfileId(payload: unknown): ProfileId | null;
+  protected extractProfileId(payload: unknown): ProfileId | null {
+    if (!this.validateConversationsWebhookPayload(payload)) {
+      return null;
+    }
+
+    const profileId = payload.data?.profileId;
+
+    if (profileId && typeof profileId === 'string' && isProfileId(profileId)) {
+      return profileId;
+    }
+
+    return null;
+  }
 
   /**
    * Cleanup resources when shutting down

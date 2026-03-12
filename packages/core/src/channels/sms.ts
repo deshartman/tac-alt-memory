@@ -3,46 +3,10 @@ import {
   ChannelType,
   ConversationId,
   ProfileId,
-  isConversationId,
-  isProfileId,
+  CommunicationWebhookPayload,
 } from '../types/index';
 import { BaseChannel, BaseChannelEvents } from './base';
 import type { TAC } from '../lib/tac';
-
-/**
- * SMS webhook event types from Twilio Conversations Service
- * Supports the actual v2 format being received from Twilio
- */
-interface SMSWebhookPayload {
-  eventType: string;
-  timestamp?: string;
-  data?: {
-    id?: string;
-    conversationId?: string;
-    accountId?: string;
-    serviceId?: string;
-    status?: string;
-    participantType?: string;
-    profileId?: string;
-    author?: {
-      address?: string;
-      channel?: string;
-      participantId?: string;
-    };
-    content?: {
-      type?: string;
-      text?: string;
-    };
-    recipients?: Array<{
-      address?: string;
-      channel?: string;
-      participantId?: string;
-      deliveryStatus?: string;
-    }>;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
 
 /**
  * SMS channel event callbacks extending base callbacks
@@ -92,252 +56,61 @@ export class SMSChannel extends BaseChannel {
   }
 
   /**
-   * Process SMS webhook from Twilio Conversations Service
+   * Process SMS webhook - delegates to Conversations webhook handler
    */
   public async processWebhook(payload: unknown): Promise<void> {
-    this.logger.debug({ operation: 'webhook_processing', payload }, 'Processing webhook');
-
-    try {
-      if (!this.validateWebhookPayload(payload)) {
-        throw new Error('Invalid webhook payload');
-      }
-
-      const webhookData = payload as SMSWebhookPayload;
-      const eventType = webhookData.eventType;
-      const conversationId = webhookData.data?.conversationId || webhookData.data?.id;
-
-      this.logger.info(
-        {
-          event_type: eventType,
-          raw_event_type: webhookData.eventType,
-          conversation_id: conversationId,
-        },
-        'Processing webhook event'
-      );
-
-      switch (eventType) {
-        case 'CONVERSATION_CREATED':
-          this.logger.debug(
-            { conversation_id: conversationId, profile_id: webhookData.data?.profileId },
-            'Handling CONVERSATION_CREATED'
-          );
-          this.handleConversationCreated(webhookData);
-          break;
-
-        case 'PARTICIPANT_ADDED':
-          this.logger.debug(
-            { conversation_id: conversationId, profile_id: webhookData.data?.profileId },
-            'Handling PARTICIPANT_ADDED'
-          );
-          this.handleParticipantAdded(webhookData);
-          break;
-
-        case 'COMMUNICATION_CREATED':
-          this.logger.debug({ conversation_id: conversationId }, 'Handling COMMUNICATION_CREATED');
-          await this.handleCommunicationCreated(webhookData);
-          break;
-
-        case 'CONVERSATION_UPDATED':
-          this.logger.debug(
-            { conversation_id: conversationId, status: webhookData.data?.status },
-            'Handling CONVERSATION_UPDATED'
-          );
-          await this.handleConversationUpdated(webhookData);
-          break;
-
-        default:
-          this.logger.warn(
-            {
-              event_type: eventType,
-              raw_event_type: webhookData.eventType,
-              conversation_id: conversationId,
-              payload,
-            },
-            'Unhandled event type - this event will be ignored'
-          );
-      }
-
-      this.logger.debug({ event_type: eventType }, 'Webhook processing completed');
-    } catch (error) {
-      this.logger.error(
-        { err: error, operation: 'webhook_processing' },
-        'Webhook processing error'
-      );
-      this.handleError(error instanceof Error ? error : new Error(String(error)), { payload });
-    }
+    // Delegate to base class Conversations webhook handler
+    await this.processConversationsWebhook(payload);
   }
 
   /**
-   * Handle conversation creation event
+   * Handle COMMUNICATION_CREATED with SMS-specific logic
+   * Override from base class to add message processing
    */
-  private handleConversationCreated(payload: SMSWebhookPayload): void {
+  protected override async handleCommunicationCreated(
+    payload: CommunicationWebhookPayload
+  ): Promise<void> {
+    // Call parent to handle base logic (conversation initialization)
+    await super.handleCommunicationCreated(payload);
     const conversationId = this.extractConversationId(payload);
     const profileId = this.extractProfileId(payload);
+    const message = payload.data.content.text.trim();
+    const author = payload.data.author.address || 'unknown';
 
-    if (!conversationId) {
-      this.logger.warn(
-        { payload, operation: 'handle_conversation_created' },
-        'Missing conversation ID in conversation.created event'
-      );
-      throw new Error('Missing conversation ID in conversation.created event');
-    }
-
-    this.startConversation(conversationId, profileId ?? undefined, payload.data?.serviceId);
-  }
-
-  /**
-   * Handle participant added event
-   */
-  private handleParticipantAdded(payload: SMSWebhookPayload): void {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-
-    if (!conversationId) {
-      this.logger.warn(
-        { payload, operation: 'handle_participant_added' },
-        'Missing conversation ID in participant.added event'
-      );
-      throw new Error('Missing conversation ID in participant.added event');
-    }
-
-    // Update conversation with profile ID if conversation exists
-    if (this.isConversationActive(conversationId)) {
-      if (profileId) {
-        const session = this.getConversationSession(conversationId);
-        if (session) {
-          this.logger.debug(
-            {
-              conversation_id: conversationId,
-              old_profile_id: session.profile_id,
-              new_profile_id: profileId,
-            },
-            'Updating conversation profile ID from participant.added'
-          );
-          session.profile_id = profileId;
-        }
-      }
-
-      if (payload.data?.serviceId) {
-        const session = this.getConversationSession(conversationId);
-        if (session && session.service_id !== payload.data.serviceId) {
-          this.logger.debug(
-            {
-              conversation_id: conversationId,
-              old_service_id: session.service_id,
-              new_service_id: payload.data.serviceId,
-            },
-            'Updating conversation configuration ID from participant.added'
-          );
-          session.service_id = payload.data.serviceId;
-        }
-      }
-    } else {
-      // Auto-initialize conversation if not already started
-      this.logger.debug(
-        { conversation_id: conversationId, profile_id: profileId },
-        'Auto-starting conversation from participant.added'
-      );
-      this.startConversation(conversationId, profileId ?? undefined, payload.data?.serviceId);
-    }
-  }
-
-  /**
-   * Handle new communication event (incoming message)
-   */
-  private async handleCommunicationCreated(payload: SMSWebhookPayload): Promise<void> {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-    // Extract message text from data.content.text
-    const message = payload.data?.content?.text?.trim();
-    // Author is in data.author.address
-    const author = payload.data?.author?.address || 'unknown';
-
-    this.logger.info(
-      {
-        conversation_id: conversationId,
-        profile_id: profileId,
-        author,
-        message,
-        message_length: message?.length,
-        operation: 'handle_communication_created',
-      },
-      'Handling communication.created'
-    );
-
-    if (!conversationId) {
-      this.logger.warn(
-        { payload, operation: 'handle_communication_created' },
-        'Missing conversation ID in communication.created event'
-      );
-      throw new Error('Missing conversation ID in communication.created event');
-    }
-
-    if (!message) {
-      this.logger.info({ conversation_id: conversationId }, 'Ignoring empty message');
+    if (!conversationId || !message) {
       return;
     }
 
-    // Filter out messages from our own phone number (AI agent responses)
+    // Filter out messages from AI agent
     if (author === this.config.twilioPhoneNumber) {
-      this.logger.info(
-        {
-          conversation_id: conversationId,
-          author_address: author,
-        },
-        'Ignoring message from AI agent'
-      );
+      this.logger.info({ conversation_id: conversationId }, 'Ignoring message from AI agent');
       return;
     }
 
-    // Initialize conversation if not already active
-    if (!this.isConversationActive(conversationId)) {
-      this.logger.debug({ conversation_id: conversationId }, 'Starting new conversation');
-      this.startConversation(conversationId, profileId ?? undefined, payload.data?.serviceId);
-    } else if (payload.data?.serviceId) {
-      const session = this.getConversationSession(conversationId);
-      if (session && session.service_id !== payload.data.serviceId) {
-        this.logger.debug(
-          {
-            conversation_id: conversationId,
-            old_service_id: session.service_id,
-            new_service_id: payload.data.serviceId,
-          },
-          'Updating conversation configuration ID from communication.created'
-        );
-        session.service_id = payload.data.serviceId;
-      }
-    }
-
-    // Get session and update with author info for profile lookup
+    // Get session and update author info
     const session = this.getConversationSession(conversationId);
     if (session) {
       session.author_info = {
         address: author,
-        participant_id: payload.data?.author?.participantId,
+        participant_id: payload.data.author.participantId,
       };
     }
 
-    // Retrieve user memory using tac.retrieveMemory which handles profile lookup by phone number
+    // Retrieve user memory
     let userMemory;
     if (session && this.tac.isMemoryEnabled()) {
-      this.logger.debug({ conversation_id: conversationId, author }, 'Retrieving user memory');
       try {
         userMemory = await this.tac.retrieveMemory(session, message);
-        this.logger.debug(
-          { conversation_id: conversationId, profile_id: session.profile_id },
-          'User memory retrieved'
-        );
       } catch (error) {
         this.logger.warn(
           { err: error, conversation_id: conversationId },
-          'Failed to retrieve user memory'
+          'Failed to retrieve memory'
         );
       }
     }
 
-    // Invoke message received callback with memory context
+    // Invoke message received callback
     if (this.smsCallbacks.onMessageReceived) {
-      this.logger.debug({ conversation_id: conversationId }, 'Invoking message received callback');
       this.smsCallbacks.onMessageReceived({
         conversationId,
         profileId: profileId ?? undefined,
@@ -345,26 +118,6 @@ export class SMSChannel extends BaseChannel {
         author,
         userMemory,
       });
-    }
-  }
-
-  /**
-   * Handle conversation updated event
-   */
-  private async handleConversationUpdated(payload: SMSWebhookPayload): Promise<void> {
-    const conversationId = this.extractConversationId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in conversation.updated event');
-    }
-
-    // Check if conversation is closed
-    if (payload.data?.status === 'CLOSED') {
-      this.logger.info(
-        { conversation_id: conversationId, status: payload.data.status },
-        'Conversation closed, cleaning up'
-      );
-      await this.endConversation(conversationId);
     }
   }
 
@@ -476,57 +229,5 @@ export class SMSChannel extends BaseChannel {
       });
       throw error;
     }
-  }
-
-  /**
-   * Extract conversation ID from webhook payload
-   */
-  protected extractConversationId(payload: unknown): ConversationId | null {
-    const webhookData = payload as SMSWebhookPayload;
-    const conversationId = webhookData.data?.conversationId || webhookData.data?.id;
-
-    if (conversationId && isConversationId(conversationId)) {
-      return conversationId;
-    }
-
-    return null;
-  }
-
-  /**
-   * Extract profile ID from webhook payload
-   */
-  protected extractProfileId(payload: unknown): ProfileId | null {
-    const webhookData = payload as SMSWebhookPayload;
-    const profileId = webhookData.data?.profileId;
-
-    if (profileId && isProfileId(profileId)) {
-      this.logger.debug(
-        { profile_id: profileId, conversation_id: webhookData.data?.conversationId },
-        'Extracted profile ID from webhook payload'
-      );
-      return profileId;
-    }
-
-    this.logger.debug(
-      { conversation_id: webhookData.data?.conversationId },
-      'Profile ID missing or invalid in webhook payload'
-    );
-    return null;
-  }
-
-  /**
-   * Validate SMS webhook payload structure
-   */
-  protected override validateWebhookPayload(payload: unknown): boolean {
-    if (!super.validateWebhookPayload(payload)) {
-      return false;
-    }
-
-    const webhookData = payload as SMSWebhookPayload;
-    return (
-      typeof webhookData === 'object' &&
-      typeof webhookData.eventType === 'string' &&
-      webhookData.eventType.length > 0
-    );
   }
 }

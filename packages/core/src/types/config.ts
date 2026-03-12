@@ -19,13 +19,13 @@ export const TACConfigSchema = z.object({
   environment: EnvironmentSchema,
   twilioAccountSid: z.string().min(1, 'Twilio Account SID is required'),
   twilioAuthToken: z.string().min(1, 'Twilio Auth Token is required'),
-  apiKey: z.string().min(1, 'API Key is required'),
-  apiToken: z.string().min(1, 'API Token is required'),
   twilioPhoneNumber: z.string().min(1, 'Twilio Phone Number is required'),
   memoryStoreId: z
     .string()
     .regex(/^mem_(service|store)_[0-9a-z]{26}$/, 'Invalid Memory Store ID format')
     .optional(),
+  memoryApiKey: z.string().optional(),
+  memoryApiToken: z.string().optional(),
   traitGroups: z.array(z.string()).optional(),
   conversationServiceId: z
     .string()
@@ -42,16 +42,30 @@ export const TACConfigSchema = z.object({
 export type TACConfigData = z.infer<typeof TACConfigSchema>;
 
 /**
+ * Webhook path configuration
+ * Matches TACServerConfig.webhookPaths interface
+ */
+export const WebhookPathsSchema = z.object({
+  twiml: z.string().optional(),
+  ws: z.string().optional(),
+  conversation: z.string().optional(),
+  conversationRelayCallback: z.string().optional(),
+  cintel: z.string().optional(),
+});
+
+export type WebhookPaths = z.infer<typeof WebhookPathsSchema>;
+
+/**
  * Environment variable mapping for configuration
  */
 export const EnvironmentVariables = {
   ENVIRONMENT: 'ENVIRONMENT',
   TWILIO_ACCOUNT_SID: 'TWILIO_ACCOUNT_SID',
   TWILIO_AUTH_TOKEN: 'TWILIO_AUTH_TOKEN',
-  API_KEY: 'API_KEY',
-  API_TOKEN: 'API_TOKEN',
   TWILIO_PHONE_NUMBER: 'TWILIO_PHONE_NUMBER',
   MEMORY_STORE_ID: 'MEMORY_STORE_ID',
+  MEMORY_API_KEY: 'MEMORY_API_KEY',
+  MEMORY_API_TOKEN: 'MEMORY_API_TOKEN',
   TRAIT_GROUPS: 'TRAIT_GROUPS',
   CONVERSATION_SERVICE_ID: 'CONVERSATION_SERVICE_ID',
   VOICE_PUBLIC_DOMAIN: 'VOICE_PUBLIC_DOMAIN',

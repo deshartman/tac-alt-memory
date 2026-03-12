@@ -48,12 +48,14 @@ export type OpenAITool = z.infer<typeof OpenAIToolSchema>;
 /**
  * Tool execution context
  */
-export interface ToolContext {
-  conversationId?: string;
-  profileId?: string;
-  channel?: string;
-  metadata?: Record<string, unknown>;
-}
+export const ToolContextSchema = z.object({
+  conversationId: z.string().optional(),
+  profileId: z.string().optional(),
+  channel: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export type ToolContext = z.infer<typeof ToolContextSchema>;
 
 /**
  * Tool execution result
