@@ -84,7 +84,10 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
           profileId: 'profile_123',
         }
       });
@@ -93,14 +96,18 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: 'Hello TAC',
           },
           author: {
-            address: '+15559876543'
-          }
+            address: '+15559876543',
+            channel: 'SMS',
+          },
+          recipients: [],
         }
       });
 
@@ -131,21 +138,28 @@ describe('Integration Tests', () => {
         await channel.processWebhook({
           eventType: 'CONVERSATION_CREATED',
           data: {
+            id: convId,
             conversationId: convId,
+            accountId: 'ACtest123456789',
+            configurationId: 'CFtest123456789',
           }
         });
 
         await channel.processWebhook({
           eventType: 'COMMUNICATION_CREATED',
           data: {
+            id: `CM${convId}`,
             conversationId: convId,
+            accountId: 'ACtest123456789',
             content: {
               type: 'TEXT',
               text: `Message from ${convId}`
             },
             author: {
-              address: '+15559876543'
-            }
+              address: '+15559876543',
+              channel: 'SMS',
+            },
+            recipients: [],
           }
         });
       }
@@ -169,14 +183,18 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest000000001',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: 'Valid message'
           },
           author: {
-            address: '+15559876543'
-          }
+            address: '+15559876543',
+            channel: 'SMS',
+          },
+          recipients: [],
         }
       });
 
@@ -184,28 +202,36 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest000000002',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: ''
           },
           author: {
-            address: '+15559876543'
-          }
+            address: '+15559876543',
+            channel: 'SMS',
+          },
+          recipients: [],
         }
       });
 
       await channel.processWebhook({
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest000000003',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: '   '  // Whitespace only
           },
           author: {
-            address: '+15559876543'
-          }
+            address: '+15559876543',
+            channel: 'SMS',
+          },
+          recipients: [],
         }
       });
 
@@ -219,7 +245,10 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
         }
       });
 
@@ -229,7 +258,10 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_UPDATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
           status: 'CLOSED'
         }
       });
@@ -249,14 +281,18 @@ describe('Integration Tests', () => {
       await expect(channel.processWebhook({
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: 'Test message'
           },
           author: {
-            address: '+15559876543'
-          }
+            address: '+15559876543',
+            channel: 'SMS',
+          },
+          recipients: [],
         }
       })).resolves.not.toThrow();
     });
@@ -274,7 +310,10 @@ describe('Integration Tests', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
         data: {
-          conversationId: 'CHtest123456789'
+          id: 'CHtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
         }
       });
 

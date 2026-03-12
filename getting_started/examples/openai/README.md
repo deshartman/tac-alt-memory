@@ -62,7 +62,7 @@ npm run dev
 
 The server starts on `http://localhost:3000` with endpoints:
 
-- `POST /sms` - SMS webhook endpoint
+- `POST /conversation` - Conversations Service webhook (routes to SMS/Voice channels)
 - `POST /twiml` - Voice webhook endpoint (generates TwiML)
 - `WS /ws` - Voice WebSocket endpoint
 - `POST /conversation-relay-callback` - Voice callback endpoint
@@ -80,10 +80,13 @@ Copy the ngrok URL (e.g., `https://abc123.ngrok.io`).
 ### 5. Configure Twilio Webhooks
 
 1. Go to [Twilio Console](https://console.twilio.com/us1/develop/phone-numbers/manage/active)
-2. Select your Twilio phone number
-3. Configure webhooks:
-   - **SMS**: Set "A MESSAGE COMES IN" webhook to `https://abc123.ngrok.io/sms`
-   - **Voice**: Set "A CALL COMES IN" webhook to `https://abc123.ngrok.io/twiml`
+2. Configure the Conversations Service webhook:
+   - Navigate to your Conversations Service configuration
+   - Set Post-Event URL to `https://abc123.ngrok.io/conversation`
+3. Configure the Phone Number webhook:
+   - Select your Twilio phone number
+   - Set Voice webhook "A CALL COMES IN" to `https://abc123.ngrok.io/twiml`
+   - **Note:** SMS webhook is NOT needed (Conversations handles SMS routing)
 
 ## Example Conversations
 

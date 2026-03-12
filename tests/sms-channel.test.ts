@@ -18,7 +18,7 @@ describe('SMS Channel', () => {
     environment: 'dev' as const,
     twilioAccountSid: 'ACtest123456789',
     twilioAuthToken: 'test_token_123',
-    apiKey: 'test_api_key',
+    apiKey: 'SKtest_api_key',
     apiToken: 'test_api_token',
     twilioPhoneNumber: '+15551234567',
     conversationServiceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
@@ -48,7 +48,10 @@ describe('SMS Channel', () => {
       const webhookPayload = {
         eventType: 'CONVERSATION_CREATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
           profileId: 'test_profile_123',
         },
       };
@@ -70,7 +73,9 @@ describe('SMS Channel', () => {
       const webhookPayload = {
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: 'Hello world',
@@ -79,6 +84,7 @@ describe('SMS Channel', () => {
             address: '+15559876543', // Different from twilioPhoneNumber
             channel: 'SMS',
           },
+          recipients: [],
         },
       };
 
@@ -99,9 +105,11 @@ describe('SMS Channel', () => {
       channel.on('messageReceived', callback);
 
       await channel.processWebhook({
-        eventType: 'communication.created', // already normalized format
+        eventType: 'communication.created', // already normalized format — not a valid Conversations event
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
         },
       });
 
@@ -115,7 +123,10 @@ describe('SMS Channel', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
         },
       });
 
@@ -125,7 +136,10 @@ describe('SMS Channel', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_UPDATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
           status: 'CLOSED',
         },
       });
@@ -143,14 +157,18 @@ describe('SMS Channel', () => {
       const webhookPayload = {
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: '', // Empty message
           },
           author: {
             address: '+15559876543',
+            channel: 'SMS',
           },
+          recipients: [],
         },
       };
 
@@ -170,14 +188,18 @@ describe('SMS Channel', () => {
       const webhookPayload = {
         eventType: 'COMMUNICATION_CREATED',
         data: {
+          id: 'CMtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
           content: {
             type: 'TEXT',
             text: 'First message',
           },
           author: {
             address: '+15559876543',
+            channel: 'SMS',
           },
+          recipients: [],
         },
       };
 
@@ -208,14 +230,20 @@ describe('SMS Channel', () => {
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
         },
       });
 
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
         data: {
+          id: 'CHtest987654321',
           conversationId: 'CHtest987654321',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
         },
       });
 
@@ -236,13 +264,13 @@ describe('SMS Channel', () => {
       // Start conversation
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
-        data: { conversationId: 'CHtest123456789', profileId: 'test_profile_123' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789', profileId: 'test_profile_123' },
       });
 
       // Close conversation
       await channel.processWebhook({
         eventType: 'CONVERSATION_UPDATED',
-        data: { conversationId: 'CHtest123456789', status: 'CLOSED' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789', status: 'CLOSED' },
       });
 
       expect(captured).toHaveLength(1);
@@ -258,13 +286,13 @@ describe('SMS Channel', () => {
 
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
-        data: { conversationId: 'CHtest123456789' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789' },
       });
       expect(channel.isConversationActive('CHtest123456789')).toBe(true);
 
       await channel.processWebhook({
         eventType: 'CONVERSATION_UPDATED',
-        data: { conversationId: 'CHtest123456789', status: 'CLOSED' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789', status: 'CLOSED' },
       });
 
       expect(channel.isConversationActive('CHtest123456789')).toBe(false);
@@ -280,11 +308,11 @@ describe('SMS Channel', () => {
 
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
-        data: { conversationId: 'CHtest123456789' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789' },
       });
       await channel.processWebhook({
         eventType: 'CONVERSATION_UPDATED',
-        data: { conversationId: 'CHtest123456789', status: 'CLOSED' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789', status: 'CLOSED' },
       });
 
       expect(captured).toHaveLength(1);
@@ -295,14 +323,189 @@ describe('SMS Channel', () => {
       // No callback registered — should not throw
       await channel.processWebhook({
         eventType: 'CONVERSATION_CREATED',
-        data: { conversationId: 'CHtest123456789' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789' },
       });
       await channel.processWebhook({
         eventType: 'CONVERSATION_UPDATED',
-        data: { conversationId: 'CHtest123456789', status: 'CLOSED' },
+        data: { id: 'CHtest123456789', conversationId: 'CHtest123456789', accountId: 'ACtest123456789', configurationId: 'CFtest123456789', status: 'CLOSED' },
       });
 
       expect(channel.isConversationActive('CHtest123456789')).toBe(false);
+    });
+  });
+
+  describe('participant events', () => {
+    it('should process PARTICIPANT_ADDED event and initialize conversation', async () => {
+      const webhookPayload = {
+        eventType: 'PARTICIPANT_ADDED',
+        data: {
+          id: 'PAtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          name: 'Test Customer',
+          profileId: 'profile_456',
+          serviceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
+          type: 'CUSTOMER',
+        },
+      };
+
+      expect(channel.isConversationActive('CHtest123456789')).toBe(false);
+
+      await channel.processWebhook(webhookPayload);
+
+      // Should initialize conversation with profile ID
+      expect(channel.isConversationActive('CHtest123456789')).toBe(true);
+      const session = channel.getConversationSession('CHtest123456789');
+      expect(session?.profile_id).toBe('profile_456');
+      expect(session?.service_id).toBe('comms_service_01kbjqhn79f0fvwfsxqzd5nqhd');
+    });
+
+    it('should process PARTICIPANT_ADDED event and update existing conversation', async () => {
+      // First create conversation without profile
+      await channel.processWebhook({
+        eventType: 'CONVERSATION_CREATED',
+        data: {
+          id: 'CHtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
+        },
+      });
+
+      expect(channel.getConversationSession('CHtest123456789')?.profile_id).toBeUndefined();
+
+      // Add participant with profile
+      await channel.processWebhook({
+        eventType: 'PARTICIPANT_ADDED',
+        data: {
+          id: 'PAtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          name: 'Test Customer',
+          profileId: 'profile_789',
+          type: 'CUSTOMER',
+        },
+      });
+
+      // Should update profile_id
+      expect(channel.getConversationSession('CHtest123456789')?.profile_id).toBe('profile_789');
+    });
+
+    it('should process PARTICIPANT_UPDATED event', async () => {
+      // First create conversation
+      await channel.processWebhook({
+        eventType: 'CONVERSATION_CREATED',
+        data: {
+          id: 'CHtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
+        },
+      });
+
+      // Update participant
+      await expect(
+        channel.processWebhook({
+          eventType: 'PARTICIPANT_UPDATED',
+          data: {
+            id: 'PAtest123456789',
+            conversationId: 'CHtest123456789',
+            accountId: 'ACtest123456789',
+            name: 'Updated Name',
+            participantType: 'CUSTOMER',
+          },
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('should process PARTICIPANT_REMOVED event', async () => {
+      // First create conversation
+      await channel.processWebhook({
+        eventType: 'CONVERSATION_CREATED',
+        data: {
+          id: 'CHtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
+        },
+      });
+
+      // Remove participant (should log but not end conversation)
+      await expect(
+        channel.processWebhook({
+          eventType: 'PARTICIPANT_REMOVED',
+          data: {
+            id: 'PAtest123456789',
+            conversationId: 'CHtest123456789',
+            accountId: 'ACtest123456789',
+            name: 'Test Customer',
+            participantType: 'CUSTOMER',
+          },
+        })
+      ).resolves.not.toThrow();
+
+      // Conversation should still be active
+      expect(channel.isConversationActive('CHtest123456789')).toBe(true);
+    });
+  });
+
+  describe('communication updated events', () => {
+    it('should process COMMUNICATION_UPDATED event', async () => {
+      // First create conversation and communication
+      await channel.processWebhook({
+        eventType: 'CONVERSATION_CREATED',
+        data: {
+          id: 'CHtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          configurationId: 'CFtest123456789',
+        },
+      });
+
+      await channel.processWebhook({
+        eventType: 'COMMUNICATION_CREATED',
+        data: {
+          id: 'CMtest123456789',
+          conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
+          content: {
+            type: 'TEXT',
+            text: 'Original message',
+          },
+          author: {
+            address: '+15559876543',
+            channel: 'SMS',
+          },
+          recipients: [],
+        },
+      });
+
+      // Update communication (e.g., delivery status change)
+      await expect(
+        channel.processWebhook({
+          eventType: 'COMMUNICATION_UPDATED',
+          data: {
+            id: 'CMtest123456789',
+            conversationId: 'CHtest123456789',
+            accountId: 'ACtest123456789',
+            content: {
+              type: 'TEXT',
+              text: 'Original message',
+            },
+            author: {
+              address: '+15559876543',
+              channel: 'SMS',
+            },
+            recipients: [
+              {
+                address: '+15551234567',
+                channel: 'SMS',
+                deliveryStatus: 'DELIVERED',
+              },
+            ],
+          },
+        })
+      ).resolves.not.toThrow();
     });
   });
 
@@ -316,7 +519,9 @@ describe('SMS Channel', () => {
       const webhookPayload = {
         eventType: 'UNKNOWN_EVENT',
         data: {
+          id: 'CHtest123456789',
           conversationId: 'CHtest123456789',
+          accountId: 'ACtest123456789',
         },
       };
 

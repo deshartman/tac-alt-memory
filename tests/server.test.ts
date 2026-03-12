@@ -81,8 +81,8 @@ describe('TACServer Webhook Validation', () => {
 
       await server.start();
 
-      // Make request to SMS endpoint
-      const response = await fetch(`http://localhost:${currentPort}/webhook`, {
+      // Make request to conversation endpoint
+      const response = await fetch(`http://localhost:${currentPort}/conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -108,8 +108,8 @@ describe('TACServer Webhook Validation', () => {
 
       await server.start();
 
-      // Make request to SMS endpoint with valid webhook payload
-      const response = await fetch(`http://localhost:${currentPort}/webhook`, {
+      // Make request to conversation endpoint with valid webhook payload
+      const response = await fetch(`http://localhost:${currentPort}/conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -133,7 +133,7 @@ describe('TACServer Webhook Validation', () => {
 
       await server.start();
 
-      await fetch(`http://localhost:${currentPort}/webhook`, {
+      await fetch(`http://localhost:${currentPort}/conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -145,7 +145,7 @@ describe('TACServer Webhook Validation', () => {
       expect(mockValidateRequest).toHaveBeenCalledWith(
         'test_token_123', // Auth token
         'test-signature', // Signature header
-        expect.stringContaining('/webhook'), // URL
+        expect.stringContaining('/conversation'), // URL
         expect.objectContaining({ From: '+15551234567' }) // Parsed body params
       );
     });
@@ -164,7 +164,7 @@ describe('TACServer Webhook Validation', () => {
       await server.start();
 
       // Make request without valid signature
-      const response = await fetch(`http://localhost:${currentPort}/webhook`, {
+      const response = await fetch(`http://localhost:${currentPort}/conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -191,7 +191,7 @@ describe('TACServer Webhook Validation', () => {
 
       await server.start();
 
-      await fetch(`http://localhost:${currentPort}/webhook`, {
+      await fetch(`http://localhost:${currentPort}/conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -221,7 +221,7 @@ describe('TACServer Webhook Validation', () => {
 
       await server.start();
 
-      await fetch(`http://localhost:${currentPort}/webhook`, {
+      await fetch(`http://localhost:${currentPort}/conversation`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
