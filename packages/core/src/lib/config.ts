@@ -1,4 +1,3 @@
-import { config } from 'dotenv';
 import {
   TACConfigData,
   TACConfigSchema,
@@ -98,7 +97,7 @@ export class TACConfig {
    *
    * @example
    * ```typescript
-   * // With all env vars set in .env file
+   * // Ensure env vars are set before calling (e.g. via dotenv, Docker, CI, etc.)
    * const config = TACConfig.fromEnv();
    *
    * // Use in TAC initialization
@@ -106,9 +105,6 @@ export class TACConfig {
    * ```
    */
   public static fromEnv(): TACConfig {
-    // Load .env file if available
-    config();
-
     // Check for required environment variables
     const requiredVars = [
       { key: EnvironmentVariables.TWILIO_ACCOUNT_SID, name: 'TWILIO_ACCOUNT_SID' },

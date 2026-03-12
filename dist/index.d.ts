@@ -22,10 +22,10 @@ declare const TACConfigSchema: z.ZodObject<{
     environment: z.ZodDefault<z.ZodEnum<["dev", "stage", "prod"]>>;
     twilioAccountSid: z.ZodString;
     twilioAuthToken: z.ZodString;
+    apiKey: z.ZodString;
+    apiToken: z.ZodString;
     twilioPhoneNumber: z.ZodString;
     memoryStoreId: z.ZodOptional<z.ZodString>;
-    memoryApiKey: z.ZodOptional<z.ZodString>;
-    memoryApiToken: z.ZodOptional<z.ZodString>;
     traitGroups: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     conversationServiceId: z.ZodString;
     voicePublicDomain: z.ZodOptional<z.ZodString>;
@@ -36,11 +36,11 @@ declare const TACConfigSchema: z.ZodObject<{
     environment: "dev" | "stage" | "prod";
     twilioAccountSid: string;
     twilioAuthToken: string;
+    apiKey: string;
+    apiToken: string;
     twilioPhoneNumber: string;
     conversationServiceId: string;
     memoryStoreId?: string | undefined;
-    memoryApiKey?: string | undefined;
-    memoryApiToken?: string | undefined;
     traitGroups?: string[] | undefined;
     voicePublicDomain?: string | undefined;
     cintelConfigurationId?: string | undefined;
@@ -49,12 +49,12 @@ declare const TACConfigSchema: z.ZodObject<{
 }, {
     twilioAccountSid: string;
     twilioAuthToken: string;
+    apiKey: string;
+    apiToken: string;
     twilioPhoneNumber: string;
     conversationServiceId: string;
     environment?: "dev" | "stage" | "prod" | undefined;
     memoryStoreId?: string | undefined;
-    memoryApiKey?: string | undefined;
-    memoryApiToken?: string | undefined;
     traitGroups?: string[] | undefined;
     voicePublicDomain?: string | undefined;
     cintelConfigurationId?: string | undefined;
@@ -69,10 +69,10 @@ declare const EnvironmentVariables: {
     readonly ENVIRONMENT: "ENVIRONMENT";
     readonly TWILIO_ACCOUNT_SID: "TWILIO_ACCOUNT_SID";
     readonly TWILIO_AUTH_TOKEN: "TWILIO_AUTH_TOKEN";
+    readonly API_KEY: "API_KEY";
+    readonly API_TOKEN: "API_TOKEN";
     readonly TWILIO_PHONE_NUMBER: "TWILIO_PHONE_NUMBER";
     readonly MEMORY_STORE_ID: "MEMORY_STORE_ID";
-    readonly MEMORY_API_KEY: "MEMORY_API_KEY";
-    readonly MEMORY_API_TOKEN: "MEMORY_API_TOKEN";
     readonly TRAIT_GROUPS: "TRAIT_GROUPS";
     readonly CONVERSATION_SERVICE_ID: "CONVERSATION_SERVICE_ID";
     readonly VOICE_PUBLIC_DOMAIN: "VOICE_PUBLIC_DOMAIN";
@@ -2820,10 +2820,10 @@ declare class TACConfig {
     readonly environment: Environment;
     readonly twilioAccountSid: string;
     readonly twilioAuthToken: string;
+    readonly apiKey: string;
+    readonly apiToken: string;
     readonly twilioPhoneNumber: string;
     readonly memoryStoreId?: string;
-    readonly memoryApiKey?: string;
-    readonly memoryApiToken?: string;
     readonly traitGroups?: string[];
     readonly conversationServiceId: string;
     readonly voicePublicDomain?: string;
@@ -2841,10 +2841,10 @@ declare class TACConfig {
      * - ENVIRONMENT: TAC environment (dev, stage, or prod) - defaults to 'prod'
      * - TWILIO_ACCOUNT_SID: Twilio Account SID (required)
      * - TWILIO_AUTH_TOKEN: Twilio Auth Token (required)
+     * - API_KEY: API Key (required)
+     * - API_TOKEN: API Token (required)
      * - TWILIO_PHONE_NUMBER: Twilio Phone Number (required)
      * - MEMORY_STORE_ID: Memory Store ID (optional, for Twilio Memory)
-     * - MEMORY_API_KEY: Memory API Key (optional, required if using Memory)
-     * - MEMORY_API_TOKEN: Memory API Token (optional, required if using Memory)
      * - TRAIT_GROUPS: Comma-separated trait group names (optional, for profile fetching)
      * - CONVERSATION_SERVICE_ID: Twilio Conversation Configuration ID (required)
      * - VOICE_PUBLIC_DOMAIN: Public domain for voice webhooks (optional)
@@ -2853,7 +2853,7 @@ declare class TACConfig {
      *
      * @example
      * ```typescript
-     * // With all env vars set in .env file
+     * // Ensure env vars are set before calling (e.g. via dotenv, Docker, CI, etc.)
      * const config = TACConfig.fromEnv();
      *
      * // Use in TAC initialization

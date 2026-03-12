@@ -1,6 +1,5 @@
 import { z } from 'zod';
 export { z } from 'zod';
-import { config } from 'dotenv';
 import pino from 'pino';
 import twilio from 'twilio';
 import { WebSocket } from 'ws';
@@ -17,10 +16,10 @@ var TACConfigSchema = z.object({
   environment: EnvironmentSchema,
   twilioAccountSid: z.string().min(1, "Twilio Account SID is required"),
   twilioAuthToken: z.string().min(1, "Twilio Auth Token is required"),
+  apiKey: z.string().min(1, "API Key is required"),
+  apiToken: z.string().min(1, "API Token is required"),
   twilioPhoneNumber: z.string().min(1, "Twilio Phone Number is required"),
   memoryStoreId: z.string().regex(/^mem_(service|store)_[0-9a-z]{26}$/, "Invalid Memory Store ID format").optional(),
-  memoryApiKey: z.string().optional(),
-  memoryApiToken: z.string().optional(),
   traitGroups: z.array(z.string()).optional(),
   conversationServiceId: z.string().regex(
     /^(comms_service|conv_configuration)_[0-9a-z]{26}$/,
@@ -35,10 +34,10 @@ var EnvironmentVariables = {
   ENVIRONMENT: "ENVIRONMENT",
   TWILIO_ACCOUNT_SID: "TWILIO_ACCOUNT_SID",
   TWILIO_AUTH_TOKEN: "TWILIO_AUTH_TOKEN",
+  API_KEY: "API_KEY",
+  API_TOKEN: "API_TOKEN",
   TWILIO_PHONE_NUMBER: "TWILIO_PHONE_NUMBER",
   MEMORY_STORE_ID: "MEMORY_STORE_ID",
-  MEMORY_API_KEY: "MEMORY_API_KEY",
-  MEMORY_API_TOKEN: "MEMORY_API_TOKEN",
   TRAIT_GROUPS: "TRAIT_GROUPS",
   CONVERSATION_SERVICE_ID: "CONVERSATION_SERVICE_ID",
   VOICE_PUBLIC_DOMAIN: "VOICE_PUBLIC_DOMAIN",
@@ -674,10 +673,10 @@ var TACConfig = class _TACConfig {
   environment;
   twilioAccountSid;
   twilioAuthToken;
+  apiKey;
+  apiToken;
   twilioPhoneNumber;
   memoryStoreId;
-  memoryApiKey;
-  memoryApiToken;
   traitGroups;
   conversationServiceId;
   voicePublicDomain;
@@ -693,15 +692,11 @@ var TACConfig = class _TACConfig {
     this.environment = validatedConfig.environment;
     this.twilioAccountSid = validatedConfig.twilioAccountSid;
     this.twilioAuthToken = validatedConfig.twilioAuthToken;
+    this.apiKey = validatedConfig.apiKey;
+    this.apiToken = validatedConfig.apiToken;
     this.twilioPhoneNumber = validatedConfig.twilioPhoneNumber;
     if (validatedConfig.memoryStoreId) {
       this.memoryStoreId = validatedConfig.memoryStoreId;
-    }
-    if (validatedConfig.memoryApiKey) {
-      this.memoryApiKey = validatedConfig.memoryApiKey;
-    }
-    if (validatedConfig.memoryApiToken) {
-      this.memoryApiToken = validatedConfig.memoryApiToken;
     }
     if (validatedConfig.traitGroups) {
       this.traitGroups = validatedConfig.traitGroups;
@@ -730,10 +725,10 @@ var TACConfig = class _TACConfig {
    * - ENVIRONMENT: TAC environment (dev, stage, or prod) - defaults to 'prod'
    * - TWILIO_ACCOUNT_SID: Twilio Account SID (required)
    * - TWILIO_AUTH_TOKEN: Twilio Auth Token (required)
+   * - API_KEY: API Key (required)
+   * - API_TOKEN: API Token (required)
    * - TWILIO_PHONE_NUMBER: Twilio Phone Number (required)
    * - MEMORY_STORE_ID: Memory Store ID (optional, for Twilio Memory)
-   * - MEMORY_API_KEY: Memory API Key (optional, required if using Memory)
-   * - MEMORY_API_TOKEN: Memory API Token (optional, required if using Memory)
    * - TRAIT_GROUPS: Comma-separated trait group names (optional, for profile fetching)
    * - CONVERSATION_SERVICE_ID: Twilio Conversation Configuration ID (required)
    * - VOICE_PUBLIC_DOMAIN: Public domain for voice webhooks (optional)
@@ -742,7 +737,7 @@ var TACConfig = class _TACConfig {
    *
    * @example
    * ```typescript
-   * // With all env vars set in .env file
+   * // Ensure env vars are set before calling (e.g. via dotenv, Docker, CI, etc.)
    * const config = TACConfig.fromEnv();
    *
    * // Use in TAC initialization
@@ -750,10 +745,11 @@ var TACConfig = class _TACConfig {
    * ```
    */
   static fromEnv() {
-    config();
     const requiredVars = [
       { key: EnvironmentVariables.TWILIO_ACCOUNT_SID, name: "TWILIO_ACCOUNT_SID" },
       { key: EnvironmentVariables.TWILIO_AUTH_TOKEN, name: "TWILIO_AUTH_TOKEN" },
+      { key: EnvironmentVariables.API_KEY, name: "API_KEY" },
+      { key: EnvironmentVariables.API_TOKEN, name: "API_TOKEN" },
       { key: EnvironmentVariables.TWILIO_PHONE_NUMBER, name: "TWILIO_PHONE_NUMBER" },
       { key: EnvironmentVariables.CONVERSATION_SERVICE_ID, name: "CONVERSATION_SERVICE_ID" }
     ];
@@ -766,10 +762,10 @@ var TACConfig = class _TACConfig {
       environment: process.env[EnvironmentVariables.ENVIRONMENT] ?? "prod",
       twilioAccountSid: process.env[EnvironmentVariables.TWILIO_ACCOUNT_SID],
       twilioAuthToken: process.env[EnvironmentVariables.TWILIO_AUTH_TOKEN],
+      apiKey: process.env[EnvironmentVariables.API_KEY],
+      apiToken: process.env[EnvironmentVariables.API_TOKEN],
       twilioPhoneNumber: process.env[EnvironmentVariables.TWILIO_PHONE_NUMBER],
       memoryStoreId: process.env[EnvironmentVariables.MEMORY_STORE_ID],
-      memoryApiKey: process.env[EnvironmentVariables.MEMORY_API_KEY],
-      memoryApiToken: process.env[EnvironmentVariables.MEMORY_API_TOKEN],
       traitGroups: process.env[EnvironmentVariables.TRAIT_GROUPS]?.split(","),
       conversationServiceId: process.env[EnvironmentVariables.CONVERSATION_SERVICE_ID],
       voicePublicDomain: process.env[EnvironmentVariables.VOICE_PUBLIC_DOMAIN],
@@ -814,16 +810,11 @@ var MemoryClient = class {
   baseUrl;
   credentials;
   logger;
-  constructor(config2, logger2) {
-    this.baseUrl = config2.memoryApiUrl;
-    if (!config2.memoryApiKey || !config2.memoryApiToken) {
-      throw new Error(
-        "Memory API credentials are required. Please set MEMORY_API_KEY and MEMORY_API_TOKEN environment variables."
-      );
-    }
+  constructor(config, logger2) {
+    this.baseUrl = config.memoryApiUrl;
     this.credentials = {
-      username: config2.memoryApiKey,
-      password: config2.memoryApiToken
+      username: config.apiKey,
+      password: config.apiToken
     };
     const baseLogger = logger2 || createLogger({ name: "tac-memory" });
     this.logger = baseLogger.child({ client: "memory" });
@@ -1108,13 +1099,13 @@ var ConversationClient = class {
   credentials;
   conversationServiceId;
   logger;
-  constructor(config2, logger2) {
-    this.baseUrl = config2.conversationsApiUrl;
+  constructor(config, logger2) {
+    this.baseUrl = config.conversationsApiUrl;
     this.credentials = {
-      username: config2.twilioAccountSid,
-      password: config2.twilioAuthToken
+      username: config.apiKey,
+      password: config.apiToken
     };
-    this.conversationServiceId = config2.conversationServiceId;
+    this.conversationServiceId = config.conversationServiceId;
     const baseLogger = logger2 || createLogger({ name: "tac-conversations" });
     this.logger = baseLogger.child({ client: "conversations" });
   }
@@ -1345,16 +1336,11 @@ var KnowledgeClient = class {
   baseUrl;
   credentials;
   logger;
-  constructor(config2, logger2) {
-    this.baseUrl = config2.knowledgeApiUrl;
-    if (!config2.memoryApiKey || !config2.memoryApiToken) {
-      throw new Error(
-        "Memory API credentials are required for Knowledge client. Please set MEMORY_API_KEY and MEMORY_API_TOKEN environment variables."
-      );
-    }
+  constructor(config, logger2) {
+    this.baseUrl = config.knowledgeApiUrl;
     this.credentials = {
-      username: config2.memoryApiKey,
-      password: config2.memoryApiToken
+      username: config.apiKey,
+      password: config.apiToken
     };
     const baseLogger = logger2 || createLogger({ name: "tac-knowledge" });
     this.logger = baseLogger.child({ client: "knowledge" });
@@ -1519,9 +1505,9 @@ var OperatorResultProcessor = class {
   memoryClient;
   config;
   logger;
-  constructor(memoryClient, config2, logger2) {
+  constructor(memoryClient, config, logger2) {
     this.memoryClient = memoryClient;
-    this.config = config2;
+    this.config = config;
     this.logger = logger2 ?? createLogger({ name: "cintel-processor" });
   }
   /**
@@ -1824,7 +1810,7 @@ var TAC = class {
     this.config = finalConfig;
     this.logger = finalLogger;
     this.channels = /* @__PURE__ */ new Map();
-    if (this.config.memoryStoreId && this.config.memoryApiKey && this.config.memoryApiToken) {
+    if (this.config.memoryStoreId) {
       this.memoryClient = new MemoryClient(this.config, this.logger.child({ component: "memory" }));
       this.logger.info("Memory client initialized");
       this.knowledgeClient = new KnowledgeClient(
@@ -3205,8 +3191,8 @@ var VoiceChannel = class extends BaseChannel {
    * @returns TwiML XML string
    * @throws {Error} if config validation fails
    */
-  connectConversationRelay(config2, parameters, options) {
-    const validationResult = ConversationRelayConfigSchema.safeParse(config2);
+  connectConversationRelay(config, parameters, options) {
+    const validationResult = ConversationRelayConfigSchema.safeParse(config);
     if (!validationResult.success) {
       const errorMessage = validationResult.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(", ");
       throw new Error(`Invalid ConversationRelay configuration: ${errorMessage}`);
@@ -3240,9 +3226,9 @@ var VoiceChannel = class extends BaseChannel {
    * Filter out undefined values from configuration object.
    * Keeps null, false, 0, and empty strings as they are valid values.
    */
-  filterUnsetValues(config2) {
+  filterUnsetValues(config) {
     const filtered = {};
-    for (const [key, value] of Object.entries(config2)) {
+    for (const [key, value] of Object.entries(config)) {
       if (value !== void 0) {
         filtered[key] = value;
       }
@@ -3584,11 +3570,11 @@ function createHandoffTools() {
 }
 
 // packages/tools/src/built-in/knowledge.ts
-function createKnowledgeSearchTool(knowledgeClient, knowledgeBaseId, config2) {
-  const topK = config2.topK ?? 5;
+function createKnowledgeSearchTool(knowledgeClient, knowledgeBaseId, config) {
+  const topK = config.topK ?? 5;
   return defineTool(
-    config2.name,
-    config2.description,
+    config.name,
+    config.description,
     {
       type: "object",
       properties: {
@@ -3598,16 +3584,16 @@ function createKnowledgeSearchTool(knowledgeClient, knowledgeBaseId, config2) {
         }
       },
       required: ["query"],
-      description: config2.description
+      description: config.description
     },
     async (params) => {
       return knowledgeClient.searchKnowledgeBase(knowledgeBaseId, params.query, topK);
     }
   );
 }
-async function createKnowledgeSearchToolAsync(knowledgeClient, knowledgeBaseId, config2) {
-  let name = config2?.name;
-  let description = config2?.description;
+async function createKnowledgeSearchToolAsync(knowledgeClient, knowledgeBaseId, config) {
+  let name = config?.name;
+  let description = config?.description;
   if (!name || !description) {
     const kb = await knowledgeClient.getKnowledgeBase(knowledgeBaseId);
     if (!name) {
@@ -3622,8 +3608,8 @@ async function createKnowledgeSearchToolAsync(knowledgeClient, knowledgeBaseId, 
     name,
     description
   };
-  if (config2?.topK !== void 0) {
-    toolConfig.topK = config2.topK;
+  if (config?.topK !== void 0) {
+    toolConfig.topK = config.topK;
   }
   return createKnowledgeSearchTool(knowledgeClient, knowledgeBaseId, toolConfig);
 }
@@ -3632,11 +3618,11 @@ function createKnowledgeTools(knowledgeClient) {
     /**
      * Create knowledge search tool with explicit config
      */
-    forKnowledgeBase: (knowledgeBaseId, config2) => createKnowledgeSearchTool(knowledgeClient, knowledgeBaseId, config2),
+    forKnowledgeBase: (knowledgeBaseId, config) => createKnowledgeSearchTool(knowledgeClient, knowledgeBaseId, config),
     /**
      * Create knowledge search tool with auto-fetched metadata
      */
-    forKnowledgeBaseAsync: (knowledgeBaseId, config2) => createKnowledgeSearchToolAsync(knowledgeClient, knowledgeBaseId, config2)
+    forKnowledgeBaseAsync: (knowledgeBaseId, config) => createKnowledgeSearchToolAsync(knowledgeClient, knowledgeBaseId, config)
   };
 }
 var DEFAULT_CONFIG = {
@@ -3657,9 +3643,9 @@ var TACServer = class {
   fastify;
   tac;
   config;
-  constructor(tac, config2 = {}) {
+  constructor(tac, config = {}) {
     this.tac = tac;
-    this.config = { ...DEFAULT_CONFIG, ...config2 };
+    this.config = { ...DEFAULT_CONFIG, ...config };
     this.fastify = Fastify({
       logger: this.config.development ? {
         level: process.env.LOG_LEVEL || "info",
@@ -3672,7 +3658,7 @@ var TACServer = class {
       } : {
         level: process.env.LOG_LEVEL || "info"
       },
-      ...config2.fastify
+      ...config.fastify
     });
   }
   /**

@@ -23,7 +23,6 @@ export default defineConfig({
     '@fastify/cors',
     'fastify-graceful-shutdown',
     'ws',
-    'dotenv',
     'pino',
     'pino-pretty',
     'zod',
