@@ -10,4 +10,8 @@ getting_started/examples/*/dist/
 # IDE
 .idea/
 .vscode/
-.claude/
+# Claude Code (allow specific skills only)
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/sync-to-python-sdk/
