@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAC Demo Dashboard</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+
+    <style>
+        /* Minimal custom styles for specific dashboard needs */
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .dashboard-container {
+            height: calc(100vh - 80px);
+            overflow: hidden;
+        }
+
+        .conversations-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+            height: 100%;
+        }
+
+        .conversation-card.border-start-sms {
+            border-left: 4px solid #0d6efd !important;
+        }
+
+        .conversation-card.border-start-voice {
+            border-left: 4px solid #198754 !important;
+        }
+
+        .conversation-card {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .conversation-card.selected-for-context {
+            border-left: 4px solid #0d6efd;
+            background-color: #f8f9fa;
+        }
+
+        .conversation-card:hover {
+            background-color: #f8f9fa;
+        }
+
+        #agentContextPanel h6 {
+            color: #495057;
+            font-weight: 600;
+        }
+
+        .trait-group {
+            margin-left: 1rem;
+            border-left: 2px solid #e9ecef;
+            padding-left: 0.5rem;
+        }
+
+        .event-list, .activity-log {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .event-item {
+            border-left: 3px solid #dee2e6;
+        }
+
+        .event-item.error {
+            border-left-color: #dc3545;
+            background-color: #fff5f5;
+        }
+
+        .log-entry.border-start-sms {
+            border-left: 3px solid #0d6efd !important;
+        }
+
+        .log-entry.border-start-voice {
+            border-left: 3px solid #198754 !important;
+        }
+
+        @keyframes pulse {
+            0% { background-color: inherit; }
+            50% { background-color: #e7f3ff; }
+            100% { background-color: inherit; }
+        }
+
+        .context-updated {
+            animation: pulse 0.5s ease-in-out 2;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <nav class="navbar navbar-light bg-white border-bottom shadow-sm">
+        <div class="container-fluid px-4">
+            <span class="navbar-brand mb-0 h1">TAC Demo Dashboard</span>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge rounded-pill" id="connectionStatus">Connecting...</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container-fluid p-4 dashboard-container">
+        <div class="row g-4 h-100">
+            <!-- Left Panel: Conversations -->
+            <div class="col-lg-4 d-flex flex-column h-100">
+                <div class="card shadow-sm h-100 d-flex flex-column">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Active Conversations (<span id="conversationCount">0</span>)</h5>
+                    </div>
+                    <div class="card-body flex-grow-1 overflow-hidden">
+                        <div class="conversations-grid" id="conversationsGrid">
+                            <div class="text-center py-5 text-muted">
+                                <div style="font-size: 3rem; opacity: 0.3;">&#128172;</div>
+                                <p class="mb-1">No active conversations yet</p>
+                                <small>Start by sending an SMS or making a call</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Panel: Agent Context -->
+            <div class="col-lg-4 d-flex flex-column h-100">
+                <div class="card shadow-sm h-100 d-flex flex-column">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Agent Context</h5>
+                        <small class="text-muted" id="contextConversationLabel">Select a conversation</small>
+                    </div>
+                    <div class="card-body flex-grow-1 overflow-auto" id="agentContextPanel">
+                        <div class="text-center py-5 text-muted">
+                            <div style="font-size: 3rem; opacity: 0.3;">&#129504;</div>
+                            <p>Click a conversation to view agent context</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Activity Log -->
+            <div class="col-lg-4 d-flex flex-column h-100">
+                <div class="card shadow-sm h-100 d-flex flex-column">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Activity Log</h5>
+                    </div>
+                    <div class="card-body flex-grow-1 overflow-auto" id="activityLog">
+                        <div class="text-center py-5 text-muted">
+                            <div style="font-size: 3rem; opacity: 0.3;">&#128203;</div>
+                            <p>Waiting for events...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard JavaScript - Real-time SSE functionality -->
+    <script src="/public/dashboard.js"></script>
+</body>
+</html>

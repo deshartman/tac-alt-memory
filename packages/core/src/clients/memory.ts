@@ -38,10 +38,17 @@ export class MemoryClient {
   constructor(config: TACConfig, logger?: Logger) {
     this.baseUrl = config.memoryApiUrl;
 
-    // Use API credentials (api_key/api_token)
+    // Use Memory API credentials (api_key/api_token), not Twilio account credentials
+    if (!config.memoryApiKey || !config.memoryApiToken) {
+      throw new Error(
+        'Memory API credentials are required. ' +
+          'Please set MEMORY_API_KEY and MEMORY_API_TOKEN environment variables.'
+      );
+    }
+
     this.credentials = {
-      username: config.apiKey,
-      password: config.apiToken,
+      username: config.memoryApiKey,
+      password: config.memoryApiToken,
     };
     const baseLogger = logger || createLogger({ name: 'tac-memory' });
     this.logger = baseLogger.child({ client: 'memory' });
@@ -288,7 +295,10 @@ export class MemoryClient {
     await this.logResponse(response);
 
     if (!response.ok) {
-      throw new Error(`Failed to create observation: ${response.status} ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new Error(
+        `Failed to create observation: ${response.status} ${response.statusText} - ${errorBody}`
+      );
     }
 
     const data = await response.json();
