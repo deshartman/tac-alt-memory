@@ -24,7 +24,7 @@ Explore the [getting_started](getting_started) directory to see the SDK in actio
 To get started, set up your Node.js environment (Node.js 20 or newer required).
 
 > [!IMPORTANT]
-> TAC packages are not yet published to npm. We recommend building your agent directly in this repository.
+> TAC packages are not yet published to npm. We recommend building your agent directly in this repository. The TypeScript SDK requires manual environment configuration—there is no automated setup wizard.
 
 ### Option 1: Build in This Repository (Recommended)
 
@@ -53,23 +53,9 @@ npm install /path/to/twilio-agent-connect-typescript/packages/server
 
 ## Quick Examples
 
-**Option 1: Use the Setup Wizard**
+Create Memory and Conversation Configuration services through the [Twilio Console](https://console.twilio.com), then configure your `.env` file with the required credentials.
 
-Use the [Twilio Setup Wizard](https://github.com/twilio-innovation/twilio-agent-connect-python/tree/main/getting_started/twilio_setup) from the Python repository to automatically create Memory and Conversation services and generate your `.env` file:
-
-```bash
-git clone https://github.com/twilio-innovation/twilio-agent-connect-python.git
-cd twilio-agent-connect-python
-make setup  # Open http://localhost:8080
-```
-
-**Option 2: Manual Setup**
-
-You can also create Memory and Conversation services manually through the [Twilio Console](https://console.twilio.com).
-
----
-
-After completing setup, here's a minimal example to get started:
+Here's a minimal example to get started:
 
 ### Multi-Channel with OpenAI SDK
 
@@ -162,24 +148,23 @@ TAC simplifies building AI agents by handling the integration between Twilio's c
 4. **Callback Invoked**: Your `onMessageReady` callback receives user message, context, and optional memory response
 5. **LLM Integration**: Your code calls LLM with message and memories, sends response through the appropriate channel
 
-For detailed architecture and advanced usage, see [CLAUDE.md](.claude/CLAUDE.md).
+For detailed architecture and advanced usage, see [CLAUDE.md](CLAUDE.md).
 
 ## Learn More
 
 **Examples & Guides:**
-- **[Getting Started Guide](getting_started/)** - Examples and comprehensive documentation
-- **[OpenAI SDK Example](getting_started/examples/openai/)** - Complete multi-channel example with Voice and SMS
-- More examples coming soon
+- **[Getting Started Guide](getting_started/)** - Setup instructions and comprehensive documentation
+- **[OpenAI Example](getting_started/examples/openai/)** - Complete multi-channel example with Voice and SMS
 
 **Documentation:**
-- **[CLAUDE.md](.claude/CLAUDE.md)** - Architecture, development guide, and API reference
+- **[CLAUDE.md](CLAUDE.md)** - Architecture, development guide, and API reference
 - **[Getting Started Guide](getting_started/README.md)** - Setup instructions, environment variables, and troubleshooting
 
 ---
 
 # TAC Development / Contribution
 
-TAC uses npm workspaces for package management. Ensure you have Node.js and npm installed:
+Ensure you have Node.js and npm installed:
 
 ```bash
 node --version  # Should be 20 or newer

@@ -32,6 +32,22 @@ tests/         # Vitest test suite
 getting_started/  # Example apps (OpenAI integration)
 ```
 
+## Architecture
+
+### Key Design Decisions
+
+1. **Unified Type System**: All types are exported from `@twilio/tac-core` rather than separate packages
+2. **Channel Abstraction**: SMS and Voice channels implement the same `Channel` interface
+3. **Callback-Based**: Simple callback pattern for message handling, handoffs, and errors
+4. **Tool Integration**: Simplified tool system with direct JSON schema definitions compatible with OpenAI function calling
+5. **1:1 Python Parity**: Deliberately simplified to match Python implementation without overengineering
+
+### Channel Implementation
+
+- **SMS Channel**: Direct Twilio webhook processing with TwiML responses
+- **Voice Channel**: Bi-directional WebSocket + TwiML for real-time audio streaming
+- **Memory Integration**: Automatic conversation context storage and retrieval
+
 ## Code Conventions
 
 - **TypeScript strict mode** with `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`
@@ -55,6 +71,45 @@ getting_started/  # Example apps (OpenAI integration)
 
 **Runtime**: twilio, fastify, @fastify/websocket, @fastify/formbody, ws, zod, pino, pino-pretty, dotenv, fastify-graceful-shutdown
 **Dev**: typescript, tsup, vitest, @vitest/coverage-v8, eslint, prettier, rimraf, @types/node, @types/ws
+
+## Configuration
+
+### Required Environment Variables
+```bash
+TWILIO_ACCOUNT_SID=your_account_sid
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_PHONE_NUMBER=your_twilio_phone_number
+CONVERSATION_SERVICE_ID=your_conversation_service_id
+```
+
+### Optional Environment Variables
+```bash
+ENVIRONMENT=prod                          # Defaults to 'prod' if not specified
+MEMORY_STORE_ID=your_memory_store_id      # For user profiles and conversation history
+TWILIO_API_KEY=your_api_key               # Required if using Memory
+TWILIO_API_TOKEN=your_api_token           # Required if using Memory
+OPENAI_API_KEY=your_openai_key            # For OpenAI examples
+VOICE_PUBLIC_DOMAIN=your_ngrok_domain     # Required for voice channel
+```
+
+### Webhook Configuration in Twilio Console
+- **Phone Number SMS webhook**: Not needed. Leave blank or point to an unrelated endpoint.
+- **Phone Number Voice webhook**: `POST https://your-domain.com/twiml`
+- **Conversations Configuration webhook**: `POST https://your-domain.com/conversation`
+
+> **Note:** The `/conversation` endpoint routes events to the correct channel (SMS/Voice) based on the payload's `data.author.channel` field.
+
+## Examples
+
+### Getting Started (`getting_started/examples/openai/`)
+**Recommended starting point** for new users. Production-ready example demonstrating:
+- Multi-channel support (SMS and Voice in single application)
+- OpenAI GPT-4o-mini integration
+- Memory integration for user profiles and conversation history
+- Profile personalization with trait groups
+- Conversation context management
+
+See [getting_started/README.md](getting_started/README.md) for detailed setup instructions.
 
 ## Pull Requests
 

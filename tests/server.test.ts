@@ -423,6 +423,30 @@ describe('TACServer Participant Event Routing', () => {
     expect(response.status).toBe(200);
   });
 
+  it('should handle PARTICIPANT_ADDED with explicit null values', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [{ channel: 'SMS', address: '+15551234567', channelId: null }],
+        createdAt: null,
+        updatedAt: null,
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
   it('should route PARTICIPANT_UPDATED with addresses', async () => {
     const webhookPayload = {
       eventType: 'PARTICIPANT_UPDATED',
