@@ -211,8 +211,8 @@ var ConversationsCommunicationDataSchema = z.object({
   // May be included for cross-event compatibility
   status: z.enum(["ACTIVE", "INACTIVE", "CLOSED"]).optional(),
   // May be included for cross-event compatibility
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional()
+  createdAt: z.string().nullish(),
+  updatedAt: z.string().nullish()
 });
 var ConversationsConversationDataSchema = z.object({
   id: z.string(),
@@ -239,8 +239,8 @@ var ConversationsConversationDataSchema = z.object({
     text: z.string(),
     transcription: z.object({}).passthrough().optional()
   }).optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional()
+  createdAt: z.string().nullish(),
+  updatedAt: z.string().nullish()
 }).transform((data) => ({
   ...data,
   conversationId: data.conversationId ?? data.id
@@ -260,7 +260,7 @@ var ConversationsParticipantDataSchema = z.object({
     z.object({
       channel: z.string(),
       address: z.string(),
-      channelId: z.string().optional()
+      channelId: z.string().nullish()
     })
   ).optional(),
   // Communication-specific fields (optional for cross-event compatibility)
@@ -276,8 +276,8 @@ var ConversationsParticipantDataSchema = z.object({
   }).optional(),
   // Conversation-specific fields (optional for cross-event compatibility)
   status: z.enum(["ACTIVE", "INACTIVE", "CLOSED"]).optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional()
+  createdAt: z.string().nullish(),
+  updatedAt: z.string().nullish()
 });
 var CommunicationWebhookPayloadSchema = z.object({
   eventType: z.enum(["COMMUNICATION_CREATED", "COMMUNICATION_UPDATED"]),
@@ -1144,10 +1144,7 @@ var MemoryClient = class {
     const response = await fetch(url, options);
     await this.logResponse(response);
     if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(
-        `Failed to create observation: ${response.status} ${response.statusText} - ${errorBody}`
-      );
+      throw new Error(`Failed to create observation: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
     return CreateObservationResponseSchema.parse(data);

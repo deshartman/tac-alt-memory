@@ -230,8 +230,8 @@ export const ConversationsCommunicationDataSchema = z.object({
   profileId: z.string().optional(), // May be included for cross-event compatibility
   participantType: z.string().optional(), // May be included for cross-event compatibility
   status: z.enum(['ACTIVE', 'INACTIVE', 'CLOSED']).optional(), // May be included for cross-event compatibility
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
+  createdAt: z.string().nullish(),
+  updatedAt: z.string().nullish(),
 });
 
 export type ConversationsCommunicationData = z.infer<typeof ConversationsCommunicationDataSchema>;
@@ -269,8 +269,8 @@ export const ConversationsConversationDataSchema = z
         transcription: z.object({}).passthrough().optional(),
       })
       .optional(),
-    createdAt: z.string().optional(),
-    updatedAt: z.string().optional(),
+    createdAt: z.string().nullish(),
+    updatedAt: z.string().nullish(),
   })
   .transform(data => ({
     ...data,
@@ -297,7 +297,7 @@ export const ConversationsParticipantDataSchema = z.object({
       z.object({
         channel: z.string(),
         address: z.string(),
-        channelId: z.string().optional(),
+        channelId: z.string().nullish(),
       })
     )
     .optional(),
@@ -318,8 +318,8 @@ export const ConversationsParticipantDataSchema = z.object({
     .optional(),
   // Conversation-specific fields (optional for cross-event compatibility)
   status: z.enum(['ACTIVE', 'INACTIVE', 'CLOSED']).optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
+  createdAt: z.string().nullish(),
+  updatedAt: z.string().nullish(),
 });
 
 export type ConversationsParticipantData = z.infer<typeof ConversationsParticipantDataSchema>;

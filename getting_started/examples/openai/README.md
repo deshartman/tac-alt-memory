@@ -50,8 +50,8 @@ Optional (for Memory integration):
 
 ```bash
 MEMORY_STORE_ID=mem_store_xxxxxxxxxxxxxxxxxxxxxxxxxx
-MEMORY_API_KEY=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-MEMORY_API_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_KEY=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ### 3. Run the Server
@@ -62,7 +62,7 @@ npm run dev
 
 The server starts on `http://localhost:3000` with endpoints:
 
-- `POST /conversation` - Conversations Service webhook (routes to SMS/Voice channels)
+- `POST /conversation` - Conversations Configuration webhook (routes to SMS/Voice channels)
 - `POST /twiml` - Voice webhook endpoint (generates TwiML)
 - `WS /ws` - Voice WebSocket endpoint
 - `POST /conversation-relay-callback` - Voice callback endpoint
@@ -80,8 +80,8 @@ Copy the ngrok URL (e.g., `https://abc123.ngrok.io`).
 ### 5. Configure Twilio Webhooks
 
 1. Go to [Twilio Console](https://console.twilio.com/us1/develop/phone-numbers/manage/active)
-2. Configure the Conversations Service webhook:
-   - Navigate to your Conversations Service configuration
+2. Configure the Conversations Configuration webhook:
+   - Navigate to your Conversations Configuration
    - Set Post-Event URL to `https://abc123.ngrok.io/conversation`
 3. Configure the Phone Number webhook:
    - Select your Twilio phone number

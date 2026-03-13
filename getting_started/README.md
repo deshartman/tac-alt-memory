@@ -2,6 +2,9 @@
 
 This guide will walk you through setting up and running your first TAC application in TypeScript.
 
+> [!NOTE]
+> This guide is for the TypeScript SDK. For Python (with automated setup wizard), see [twilio-agent-connect-python](https://github.com/twilio-innovation/twilio-agent-connect-python).
+
 ## Prerequisites
 
 1. **Node.js 20+** installed
@@ -11,28 +14,19 @@ This guide will walk you through setting up and running your first TAC applicati
 
 ## Step 1: Set Up Twilio Services
 
-You need to create Twilio Conversation and Memory services before using TAC.
+You need to create Twilio Conversations Configuration and Memory services before using TAC. Create these services through the [Twilio Console](https://console.twilio.com/).
 
-**Option 1: Use the Setup Wizard (Recommended)**
+**Services to create:**
 
-Use the [Twilio Setup Wizard](https://github.com/twilio-innovation/twilio-agent-connect-python/tree/main/getting_started/twilio_setup) from the Python repository to automatically create Memory and Conversation services and generate your `.env` file:
+1. **Conversations Configuration** - For managing SMS and Voice conversations
+   - Go to [Twilio Console > Conversations](https://console.twilio.com/us1/develop/conversations/configuration)
+   - Create a new Conversations Configuration
+   - Note the Configuration ID (format: `conv_configuration_xxxxx`)
 
-```bash
-git clone https://github.com/twilio-innovation/twilio-agent-connect-python.git
-cd twilio-agent-connect-python
-make setup  # Open http://localhost:8080
-```
-
-Copy the generated `.env` file to your TypeScript project's `getting_started/examples/` directory.
-
-**Option 2: Manual Setup**
-
-You can also create services manually through the [Twilio Console](https://console.twilio.com/).
-
-**Required Services:**
-
-- **Conversation Configuration**: For managing conversations
-- **Memory Service** (optional): For persistent user profiles and conversation history
+2. **Memory Store** (optional but recommended) - For persistent user profiles and conversation history
+   - Go to [Twilio Console > Memory](https://console.twilio.com/us1/develop/memory/stores)
+   - Create a new Memory Store
+   - Note the Store ID (format: `mem_store_xxxxx`)
 
 ## Step 2: Run the Example
 
@@ -47,9 +41,7 @@ npm run build
 
 ### Configure Environment Variables
 
-If you used the Setup Wizard, copy the generated `.env` file to `getting_started/examples/`.
-
-Otherwise, create your `.env` file manually:
+Create your `.env` file:
 
 ```bash
 cd getting_started/examples
@@ -90,14 +82,14 @@ See [`examples/.env.example`](examples/.env.example) for all available configura
 - `TWILIO_ACCOUNT_SID`: Twilio account SID
 - `TWILIO_AUTH_TOKEN`: Twilio auth token
 - `TWILIO_PHONE_NUMBER`: Your Twilio phone number
-- `CONVERSATION_SERVICE_ID`: Conversation service ID
+- `CONVERSATION_SERVICE_ID`: Conversations Configuration ID (from Step 1)
 - `OPENAI_API_KEY`: Your OpenAI API key (for OpenAI example)
 
 ### Optional (Memory)
 
 - `MEMORY_STORE_ID`: Memory store ID
-- `MEMORY_API_KEY`: Memory API key
-- `MEMORY_API_TOKEN`: Memory API token
+- `TWILIO_API_KEY`: Twilio API key (required for Memory)
+- `TWILIO_API_TOKEN`: Twilio API token (required for Memory)
 
 ### Optional (Server)
 
@@ -110,4 +102,4 @@ See [`examples/.env.example`](examples/.env.example) for all available configura
 - Customize the agent's behavior by modifying the message handler in `examples/openai/src/index.ts`
 - Add tool calling to enable agent actions beyond text responses
 - Explore the main [README](../README.md) for advanced features
-- Review [.claude/CLAUDE.md](../.claude/CLAUDE.md) for architecture and development guidelines
+- Review [CLAUDE.md](../CLAUDE.md) for architecture and development guidelines
