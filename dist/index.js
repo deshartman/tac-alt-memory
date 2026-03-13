@@ -41,8 +41,8 @@ var EnvironmentVariables = {
   ENVIRONMENT: "ENVIRONMENT",
   TWILIO_ACCOUNT_SID: "TWILIO_ACCOUNT_SID",
   TWILIO_AUTH_TOKEN: "TWILIO_AUTH_TOKEN",
-  API_KEY: "API_KEY",
-  API_TOKEN: "API_TOKEN",
+  TWILIO_API_KEY: "TWILIO_API_KEY",
+  TWILIO_API_TOKEN: "TWILIO_API_TOKEN",
   TWILIO_PHONE_NUMBER: "TWILIO_PHONE_NUMBER",
   MEMORY_STORE_ID: "MEMORY_STORE_ID",
   TRAIT_GROUPS: "TRAIT_GROUPS",
@@ -861,8 +861,8 @@ var TACConfig = class _TACConfig {
    * - ENVIRONMENT: TAC environment (dev, stage, or prod) - defaults to 'prod'
    * - TWILIO_ACCOUNT_SID: Twilio Account SID (required)
    * - TWILIO_AUTH_TOKEN: Twilio Auth Token (required)
-   * - API_KEY: API Key (required)
-   * - API_TOKEN: API Token (required)
+   * - TWILIO_API_KEY: Twilio API Key (required)
+   * - TWILIO_API_TOKEN: Twilio API Token (required)
    * - TWILIO_PHONE_NUMBER: Twilio Phone Number (required)
    * - MEMORY_STORE_ID: Memory Store ID (optional, for Twilio Memory)
    * - TRAIT_GROUPS: Comma-separated trait group names (optional, for profile fetching)
@@ -884,8 +884,8 @@ var TACConfig = class _TACConfig {
     const requiredVars = [
       { key: EnvironmentVariables.TWILIO_ACCOUNT_SID, name: "TWILIO_ACCOUNT_SID" },
       { key: EnvironmentVariables.TWILIO_AUTH_TOKEN, name: "TWILIO_AUTH_TOKEN" },
-      { key: EnvironmentVariables.API_KEY, name: "API_KEY" },
-      { key: EnvironmentVariables.API_TOKEN, name: "API_TOKEN" },
+      { key: EnvironmentVariables.TWILIO_API_KEY, name: "TWILIO_API_KEY" },
+      { key: EnvironmentVariables.TWILIO_API_TOKEN, name: "TWILIO_API_TOKEN" },
       { key: EnvironmentVariables.TWILIO_PHONE_NUMBER, name: "TWILIO_PHONE_NUMBER" },
       { key: EnvironmentVariables.CONVERSATION_SERVICE_ID, name: "CONVERSATION_SERVICE_ID" }
     ];
@@ -898,8 +898,8 @@ var TACConfig = class _TACConfig {
       environment: process.env[EnvironmentVariables.ENVIRONMENT] ?? "prod",
       twilioAccountSid: process.env[EnvironmentVariables.TWILIO_ACCOUNT_SID],
       twilioAuthToken: process.env[EnvironmentVariables.TWILIO_AUTH_TOKEN],
-      apiKey: process.env[EnvironmentVariables.API_KEY],
-      apiToken: process.env[EnvironmentVariables.API_TOKEN],
+      apiKey: process.env[EnvironmentVariables.TWILIO_API_KEY],
+      apiToken: process.env[EnvironmentVariables.TWILIO_API_TOKEN],
       twilioPhoneNumber: process.env[EnvironmentVariables.TWILIO_PHONE_NUMBER],
       memoryStoreId: process.env[EnvironmentVariables.MEMORY_STORE_ID],
       traitGroups: process.env[EnvironmentVariables.TRAIT_GROUPS]?.split(","),
