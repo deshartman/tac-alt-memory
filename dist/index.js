@@ -1144,7 +1144,10 @@ var MemoryClient = class {
     const response = await fetch(url, options);
     await this.logResponse(response);
     if (!response.ok) {
-      throw new Error(`Failed to create observation: ${response.status} ${response.statusText}`);
+      const errorBody = await response.text();
+      throw new Error(
+        `Failed to create observation: ${response.status} ${response.statusText} - ${errorBody}`
+      );
     }
     const data = await response.json();
     return CreateObservationResponseSchema.parse(data);

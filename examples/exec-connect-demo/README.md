@@ -22,8 +22,9 @@ This demo simulates **Owl Internet**, a fictional ISP's customer service agent t
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                         TACServer (Fastify)                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────────┐   │
-│  │  /sms        │  │  /twiml      │  │  /ws                        │   │
-│  │  SMS webhook │  │  Voice TwiML │  │  WebSocket                  │   │
+│  │/conversation │  │  /twiml      │  │  /ws                        │   │
+│  │Conversations │  │  Voice TwiML │  │  WebSocket                  │   │
+│  │   webhook    │  │              │  │                             │   │
 │  └──────────────┘  └──────────────┘  └─────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
            │                  │                  │
@@ -77,8 +78,8 @@ TWILIO_CONVERSATION_SERVICE_SID=CHxxxx
 
 # Optional: Twilio Memory
 MEMORY_STORE_ID=mem_store_xxxx
-MEMORY_API_KEY=xxxx
-MEMORY_API_TOKEN=xxxx
+TWILIO_API_KEY=SKxxxx
+TWILIO_API_TOKEN=xxxx
 
 # Required: OpenAI
 OPENAI_API_KEY=sk-xxxx
@@ -89,35 +90,34 @@ TWILIO_VOICE_PUBLIC_DOMAIN=your-ngrok-domain.ngrok.app
 
 ## Running the Demo
 
-### 1. Install Dependencies
+### 1. Install and Build
 
 From the repository root:
 
 ```bash
+# Install and build core packages
 npm install
+npm run build
 ```
 
 ### 2. Start the Server
 
-```bash
-npm run example:exec
-```
-
-Or directly:
+Navigate to the example directory and start:
 
 ```bash
 cd examples/exec-connect-demo
+npm install
 npm run dev
 ```
 
 The server will start on `http://0.0.0.0:8000` with:
-- `/sms` - SMS webhook endpoint
+- `/conversation` - Conversations Configuration webhook (routes to SMS/Voice channels)
 - `/twiml` - Voice webhook endpoint
 - `/ws` - Voice WebSocket endpoint
 
 ### 3. Test with SMS
 
-**Setup Twilio Webhook:**
+**Setup Twilio Conversation Configuration Webhook:**
 
 1. Start ngrok tunnel:
    ```bash
@@ -126,16 +126,16 @@ The server will start on `http://0.0.0.0:8000` with:
 
 2. Your ngrok URL will be `https://your-ngrok-domain`
 
-3. Set up Conversation Configuration
-  1. In the [Twilio Console](https://1console.twilio.com/), navigate to **Conversations (new) > Conversation Configurations**.
-  2. Select your Conversation Service created during the setup wizard.
-  3. In the **Overview** tab, click the **Edit** button.
-  4. Set **Webhook > Callback method** to: `https://your-domain.ngrok.app/sms`.
-    - Replace `your-domain` with your actual ngrok domain from the previous section (either the random domain like `abc123xyz` or your static domain).
-  5. Select **`POST`** as the HTTP method.
-  6. Click **Save changes**.
+3. Configure Conversation Configuration Webhook:
+   1. In the [Twilio Console](https://console.twilio.com/), navigate to **Conversations > Configuration**
+   2. Select your Conversation Configuration
+   3. Set **Post-Event URL** to: `https://your-ngrok-domain/conversation`
+   4. Select **`POST`** as the HTTP method
+   5. Click **Save changes**
 
 4. Send an SMS to your Twilio phone number to interact with the agent
+
+> **Note:** SMS webhook on the phone number itself is NOT needed. The Conversations Configuration webhook handles all routing.
 
 ### 4. Test with Voice
 
@@ -149,7 +149,10 @@ The server will start on `http://0.0.0.0:8000` with:
    TWILIO_VOICE_PUBLIC_DOMAIN=your-ngrok-domain
    ```
 
-3. Configure Twilio phone number webhook to: `https://your-ngrok-domain/twiml`
+3. Configure Twilio phone number Voice webhook:
+   1. Go to [Phone Numbers > Manage > Active numbers](https://console.twilio.com/us1/develop/phone-numbers/manage/active)
+   2. Select your phone number
+   3. Set **A CALL COMES IN** webhook to: `https://your-ngrok-domain/twiml`
 
 4. Call your Twilio phone number to interact with the voice agent
 
@@ -231,8 +234,8 @@ history.push({ role: 'assistant', content: llmResponse });
 
 **Customer (via SMS):** "I want to upgrade my internet plan"
 
-1. **Webhook received** → `/sms` endpoint
-2. **SMS channel processes** → Extracts message, conversation ID, profile ID
+1. **Webhook received** → `/conversation` endpoint (Conversations Configuration webhook)
+2. **Routed to SMS channel** → Based on `author.channel` field in webhook payload
 3. **TAC retrieves memory** → Gets customer's current plan, preferences, history
 4. **Message ready callback** → Triggers with context and memories
 5. **LLM processes** → Agent uses customer context + business tools

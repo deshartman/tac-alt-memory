@@ -52,42 +52,49 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 # Optional: Memory Service
 MEMORY_STORE_ID=mem_store_xxxx
-MEMORY_API_KEY=your_api_key_here
-MEMORY_API_TOKEN=your_api_token_here
+TWILIO_API_KEY=SKxxxx
+TWILIO_API_TOKEN=xxxx
 ```
 
 ### Installation and Startup
 
+From the repository root:
+
 ```bash
-# From project root - install and build
+# Install and build core packages
 npm install
 npm run build
 
-# Start the demo
+# Navigate to example and start
+cd examples/multi-channel-demo
+npm install
 npm run dev
 ```
 
 The server starts on `http://localhost:8000` with endpoints:
-- `POST /sms` - SMS webhook endpoint
+- `POST /conversation` - Conversations Configuration webhook (routes to SMS/Voice channels)
 - `POST /twiml` - Voice webhook endpoint
 - `WS /ws` - Voice WebSocket endpoint
 
 ### Twilio Configuration
 
-#### SMS Setup
-1. Go to Phone Numbers → Manage → Active numbers
-2. Select your Twilio phone number
-3. Set SMS webhook: `https://your-domain.com/sms`
+#### Conversation Configuration Setup
+1. Go to [Twilio Console > Conversations > Configuration](https://console.twilio.com/us1/develop/conversations/configuration)
+2. Select your Conversation Configuration
+3. Set Post-Event URL to: `https://your-domain.com/conversation`
+4. Select **`POST`** as the HTTP method
+5. Click **Save**
+
+> **Note:** SMS webhook on the phone number itself is NOT needed. The Conversations Configuration webhook handles all routing.
 
 #### Voice Setup
-1. Go to Phone Numbers → Manage → Active numbers
+1. Go to [Phone Numbers → Manage → Active numbers](https://console.twilio.com/us1/develop/phone-numbers/manage/active)
 2. Select your Twilio phone number
-3. Set Voice webhook: `https://your-domain.com/twiml`
+3. Set **A CALL COMES IN** webhook to: `https://your-domain.com/twiml`
 
 **For local development**: Use ngrok to expose your local server:
 ```bash
 ngrok http 8000
-# Use the https URL for webhook configuration
 ```
 
 ## Example Interactions
