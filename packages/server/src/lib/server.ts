@@ -17,6 +17,7 @@ import {
   ConversationRelayCallbackPayloadSchema,
   ConversationRelayConfig,
   ConversationsWebhookPayloadSchema,
+  ConversationsWebhookPayload,
   BaseChannel,
   ConversationId,
   TAC,
@@ -169,6 +170,30 @@ export class TACServer {
   }
 
   /**
+   * Extract channel string from webhook payload data
+   * Checks author.channel first (COMMUNICATION events),
+   * then addresses[0].channel (PARTICIPANT events)
+   */
+  private extractChannelFromWebhook(
+    webhookData: ConversationsWebhookPayload['data']
+  ): string | undefined {
+    // Try author.channel first (COMMUNICATION_* events)
+    if ('author' in webhookData && webhookData.author?.channel) {
+      return webhookData.author.channel.toLowerCase();
+    }
+
+    // Try addresses array (PARTICIPANT_* events)
+    if ('addresses' in webhookData && Array.isArray(webhookData.addresses)) {
+      const addresses = webhookData.addresses;
+      if (addresses.length > 0 && addresses[0]?.channel) {
+        return addresses[0].channel.toLowerCase();
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Setup routes
    */
   private async setupRoutes(): Promise<void> {
@@ -192,7 +217,21 @@ export class TACServer {
           const payload = parseResult.data;
           const webhookData = payload.data;
           const author = 'author' in webhookData ? webhookData.author : undefined;
-          const channelString = author?.channel?.toLowerCase();
+          const channelString = this.extractChannelFromWebhook(webhookData);
+
+          // Log when channel is extracted from addresses (for observability)
+          if (channelString && !author?.channel && 'addresses' in webhookData) {
+            this.fastify.log.debug(
+              {
+                event_type: payload.eventType,
+                addresses_count: Array.isArray(webhookData.addresses)
+                  ? webhookData.addresses.length
+                  : 0,
+                extracted_channel: channelString,
+              },
+              'Extracted channel from participant addresses'
+            );
+          }
 
           // Handle lifecycle events without channel information
           // These events (CONVERSATION_CREATED, CONVERSATION_UPDATED) are container-level
