@@ -285,6 +285,233 @@ describe('TACServer Webhook Validation', () => {
   });
 });
 
+describe('TACServer Participant Event Routing', () => {
+  const getTestConfig = () => ({
+    environment: 'dev' as const,
+    twilioAccountSid: 'ACtest123456789',
+    twilioAuthToken: 'test_token_123',
+    apiKey: 'test_api_key',
+    apiToken: 'test_api_token',
+    twilioPhoneNumber: '+15551234567',
+    conversationServiceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
+  });
+
+  let tac: TAC;
+  let server: TACServer;
+  let smsChannel: SMSChannel;
+  let voiceChannel: VoiceChannel;
+  let currentPort: number;
+
+  beforeEach(async () => {
+    mockValidateRequest.mockReset();
+    mockValidateRequestWithBody.mockReset();
+    mockValidateRequestWithBody.mockReturnValue(true); // Valid signature
+
+    currentPort = getNextPort();
+
+    const config = new TACConfig(getTestConfig());
+    tac = new TAC({ config });
+
+    smsChannel = new SMSChannel(tac);
+    voiceChannel = new VoiceChannel(tac);
+    tac.registerChannel(smsChannel);
+    tac.registerChannel(voiceChannel);
+
+    server = new TACServer(tac, {
+      development: true,
+      validateWebhooks: false, // Disable validation for easier testing
+      voice: { port: currentPort },
+    });
+
+    await server.start();
+  });
+
+  afterEach(async () => {
+    if (server) {
+      await server.stop().catch(() => {});
+    }
+    tac.shutdown();
+  });
+
+  it('should route PARTICIPANT_ADDED with SMS address to SMS channel', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [{ channel: 'SMS', address: '+15551234567' }],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should route PARTICIPANT_ADDED with Voice address to Voice channel', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [{ channel: 'VOICE', address: '+15551234567' }],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should route to first channel when participant has multiple addresses', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [
+          { channel: 'SMS', address: '+15551234567' },
+          { channel: 'VOICE', address: '+15559876543' },
+        ],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should acknowledge PARTICIPANT_ADDED without addresses', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should route PARTICIPANT_UPDATED with addresses', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_UPDATED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [{ channel: 'SMS', address: '+15551234567' }],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should route PARTICIPANT_REMOVED with addresses', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_REMOVED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [{ channel: 'SMS', address: '+15551234567' }],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should acknowledge participant event with empty addresses array', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should return 400 for participant event with invalid channel', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        addresses: [{ channel: 'WHATSAPP', address: '+15551234567' }],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(400);
+  });
+});
+
 describe('TACServer with conversationRelayConfig', () => {
   const getTestConfig = () => ({
     environment: 'dev' as const,

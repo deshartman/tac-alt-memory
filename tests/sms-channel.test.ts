@@ -346,6 +346,12 @@ describe('SMS Channel', () => {
           profileId: 'profile_456',
           serviceId: 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd',
           type: 'CUSTOMER',
+          addresses: [
+            {
+              channel: 'SMS',
+              address: '+15559876543',
+            },
+          ],
         },
       };
 
@@ -384,6 +390,12 @@ describe('SMS Channel', () => {
           name: 'Test Customer',
           profileId: 'profile_789',
           type: 'CUSTOMER',
+          addresses: [
+            {
+              channel: 'SMS',
+              address: '+15559876543',
+            },
+          ],
         },
       });
 
@@ -413,6 +425,12 @@ describe('SMS Channel', () => {
             accountId: 'ACtest123456789',
             name: 'Updated Name',
             participantType: 'CUSTOMER',
+            addresses: [
+              {
+                channel: 'SMS',
+                address: '+15559876543',
+              },
+            ],
           },
         })
       ).resolves.not.toThrow();
@@ -440,6 +458,12 @@ describe('SMS Channel', () => {
             accountId: 'ACtest123456789',
             name: 'Test Customer',
             participantType: 'CUSTOMER',
+            addresses: [
+              {
+                channel: 'SMS',
+                address: '+15559876543',
+              },
+            ],
           },
         })
       ).resolves.not.toThrow();
@@ -526,6 +550,20 @@ describe('SMS Channel', () => {
       };
 
       await expect(channel.processWebhook(webhookPayload)).resolves.not.toThrow();
+    });
+
+    it('should log validation errors with detailed information', async () => {
+      const logSpy = vi.spyOn(channel['logger'], 'error');
+
+      await channel.processWebhook({ eventType: 'INVALID', data: {} });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          validation_errors: expect.any(Array),
+          operation: 'conversations_webhook_validation',
+        }),
+        'Invalid Conversations webhook payload'
+      );
     });
   });
 });

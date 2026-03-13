@@ -1,9 +1,11 @@
+import { z } from 'zod';
 import {
   ConversationSession,
   ChannelType,
   ConversationId,
   ProfileId,
   ConversationsWebhookPayload,
+  ConversationsWebhookPayloadSchema,
   CommunicationWebhookPayload,
   ConversationWebhookPayload,
   ParticipantWebhookPayload,
@@ -87,13 +89,24 @@ export abstract class BaseChannel {
     );
 
     try {
-      if (!this.validateConversationsWebhookPayload(payload)) {
+      const validationResult = this.validateConversationsWebhookPayload(payload);
+
+      if (!validationResult.success) {
+        this.logger.error(
+          {
+            validation_errors: validationResult.error.errors,
+            payload,
+            operation: 'conversations_webhook_validation',
+          },
+          'Invalid Conversations webhook payload'
+        );
         throw new Error('Invalid Conversations webhook payload');
       }
 
-      // After validation, payload is ConversationsWebhookPayload
-      const eventType = payload.eventType;
-      const conversationId = payload.data.conversationId ?? payload.data.id;
+      // TypeScript now knows payload is ConversationsWebhookPayload
+      const webhookData = validationResult.data;
+      const eventType = webhookData.eventType;
+      const conversationId = webhookData.data.conversationId ?? webhookData.data.id;
 
       this.logger.info(
         {
@@ -106,34 +119,35 @@ export abstract class BaseChannel {
 
       switch (eventType) {
         case 'CONVERSATION_CREATED':
-          this.handleConversationCreated(payload);
+          this.handleConversationCreated(webhookData);
           break;
 
         case 'PARTICIPANT_ADDED':
-          this.handleParticipantAdded(payload);
+          this.handleParticipantAdded(webhookData);
           break;
 
         case 'PARTICIPANT_UPDATED':
-          this.handleParticipantUpdated(payload);
+          this.handleParticipantUpdated(webhookData);
           break;
 
         case 'PARTICIPANT_REMOVED':
-          this.handleParticipantRemoved(payload);
+          this.handleParticipantRemoved(webhookData);
           break;
 
         case 'COMMUNICATION_CREATED':
-          await this.handleCommunicationCreated(payload);
+          await this.handleCommunicationCreated(webhookData);
           break;
 
         case 'COMMUNICATION_UPDATED':
-          await this.handleCommunicationUpdated(payload);
+          await this.handleCommunicationUpdated(webhookData);
           break;
 
         case 'CONVERSATION_UPDATED':
-          await this.handleConversationUpdated(payload);
+          await this.handleConversationUpdated(webhookData);
           break;
 
-        default:
+        default: {
+          // TypeScript exhaustiveness check ensures all cases are handled
           this.logger.warn(
             {
               event_type: eventType,
@@ -142,6 +156,8 @@ export abstract class BaseChannel {
             },
             'Unhandled Conversations event type'
           );
+          break;
+        }
       }
     } catch (error) {
       this.logger.error(
@@ -153,21 +169,29 @@ export abstract class BaseChannel {
   }
 
   /**
-   * Validate Conversations webhook payload structure
+   * Validate Conversations webhook payload structure using Zod schema
+   * Returns parse result with success flag and either data or error details
    */
   protected validateConversationsWebhookPayload(
     payload: unknown
-  ): payload is ConversationsWebhookPayload {
+  ): { success: true; data: ConversationsWebhookPayload } | { success: false; error: z.ZodError } {
     if (!this.validateWebhookPayload(payload)) {
-      return false;
+      // Return a Zod error for consistency
+      return {
+        success: false,
+        error: new z.ZodError([
+          {
+            code: 'invalid_type',
+            expected: 'object',
+            received: typeof payload,
+            path: [],
+            message: 'Payload is null or undefined',
+          },
+        ]),
+      };
     }
 
-    const webhookData = payload as Record<string, unknown>;
-    return (
-      typeof webhookData === 'object' &&
-      typeof webhookData.eventType === 'string' &&
-      webhookData.eventType.length > 0
-    );
+    return ConversationsWebhookPayloadSchema.safeParse(payload);
   }
 
   /**
@@ -436,11 +460,14 @@ export abstract class BaseChannel {
    * Extract conversation ID from Conversations webhook payload
    */
   protected extractConversationId(payload: unknown): ConversationId | null {
-    if (!this.validateConversationsWebhookPayload(payload)) {
+    const validationResult = this.validateConversationsWebhookPayload(payload);
+
+    if (!validationResult.success) {
       return null;
     }
 
-    const conversationId = payload.data?.conversationId || payload.data?.id;
+    const conversationId =
+      validationResult.data.data.conversationId || validationResult.data.data.id;
 
     if (conversationId && typeof conversationId === 'string' && isConversationId(conversationId)) {
       return conversationId;
@@ -453,11 +480,13 @@ export abstract class BaseChannel {
    * Extract profile ID from Conversations webhook payload
    */
   protected extractProfileId(payload: unknown): ProfileId | null {
-    if (!this.validateConversationsWebhookPayload(payload)) {
+    const validationResult = this.validateConversationsWebhookPayload(payload);
+
+    if (!validationResult.success) {
       return null;
     }
 
-    const profileId = payload.data?.profileId;
+    const profileId = validationResult.data.data.profileId;
 
     if (profileId && typeof profileId === 'string' && isProfileId(profileId)) {
       return profileId;

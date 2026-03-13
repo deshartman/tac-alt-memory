@@ -4,8 +4,11 @@ node_modules/
 .DS_Store
 *.log
 
-# Build artifacts
-dist/
+# Build artifacts (packages)
+packages/*/dist/
+
+# Only ignore dist in examples, not root
+getting_started/examples/*/dist/
 
 # IDE
 .idea/
