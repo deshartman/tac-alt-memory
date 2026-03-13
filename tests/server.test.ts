@@ -696,11 +696,12 @@ describe('TACServer with conversationRelayConfig', () => {
       body: 'From=%2B15551234567&To=%2B15559876543&CallSid=CA123',
     });
 
-    // Should still work, just with URL only
+    // Should work with URL and default welcomeGreeting
     expect(handleIncomingCallSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationRelayConfig: expect.objectContaining({
           url: expect.stringMatching(/^wss?:\/\//),
+          welcomeGreeting: 'Hello! How can I assist you today?', // Default value
         }),
       })
     );

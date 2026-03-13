@@ -66,6 +66,7 @@ getting_started/  # Example apps (OpenAI integration)
 - **Tool system** (`packages/tools/src/lib/builder.ts`): `defineTool()` with JSON schema; supports conversion to OpenAI and Anthropic formats
 - **Config via Zod** (`packages/core/src/lib/config.ts`): `TACConfig.fromEnv()` validates env vars; environment-aware API URL computation (dev/stage/prod)
 - **API credentials consolidated** at `TACConfig` level (apiKey/apiToken shared across Memory, Conversation, Knowledge clients)
+- **TACServer** (`packages/server/src/lib/server.ts`): Fastify-based server with default `welcomeGreeting` for voice calls; customizable via `conversationRelayConfig`
 
 ## Dependencies
 
@@ -98,6 +99,46 @@ VOICE_PUBLIC_DOMAIN=your_ngrok_domain     # Required for voice channel
 - **Conversations Configuration webhook**: `POST https://your-domain.com/conversation`
 
 > **Note:** The `/conversation` endpoint routes events to the correct channel (SMS/Voice) based on the payload's `data.author.channel` field.
+
+## TACServer Configuration
+
+The `TACServer` class (`packages/server/src/lib/server.ts`) provides a production-ready Fastify server with sensible defaults:
+
+### Default Configuration
+
+```typescript
+{
+  voice: { host: '0.0.0.0', port: 3000 },
+  webhookPaths: {
+    twiml: '/twiml',
+    ws: '/ws',
+    conversation: '/conversation',
+    conversationRelayCallback: '/conversation-relay-callback',
+  },
+  conversationRelayConfig: {
+    welcomeGreeting: 'Hello! How can I assist you today?',
+  },
+  development: false,
+  validateWebhooks: true,
+}
+```
+
+### Customizing Voice Greeting
+
+The default `welcomeGreeting` is automatically applied to all voice calls. Customize it via `conversationRelayConfig`:
+
+```typescript
+const server = new TACServer(tac, {
+  conversationRelayConfig: {
+    welcomeGreeting: 'Welcome to our support line!',
+    welcomeGreetingInterruptible: 'any',
+    transcriptionProvider: 'Deepgram',
+    ttsProvider: 'Google',
+  },
+});
+```
+
+All ConversationRelay attributes except `url` are supported (see `packages/core/src/types/crelay.ts`). The `url` field is automatically set by the server based on the request host and WebSocket path.
 
 ## Examples
 
