@@ -30,6 +30,13 @@ var TACConfigSchema = z.object({
   cintelObservationOperatorSid: z.string().optional(),
   cintelSummaryOperatorSid: z.string().optional()
 });
+var WebhookPathsSchema = z.object({
+  twiml: z.string().optional(),
+  ws: z.string().optional(),
+  conversation: z.string().optional(),
+  conversationRelayCallback: z.string().optional(),
+  cintel: z.string().optional()
+});
 var EnvironmentVariables = {
   ENVIRONMENT: "ENVIRONMENT",
   TWILIO_ACCOUNT_SID: "TWILIO_ACCOUNT_SID",
@@ -123,6 +130,10 @@ var AuthorInfoSchema = z.object({
   address: z.string(),
   participant_id: z.string().optional()
 });
+var ProfileSchema = z.object({
+  profile_id: z.string(),
+  traits: z.record(z.unknown()).optional()
+});
 var ConversationSessionSchema = z.object({
   conversation_id: z.string().min(1, "Conversation ID is required"),
   profile_id: z.string().optional(),
@@ -130,7 +141,7 @@ var ConversationSessionSchema = z.object({
   channel: ChannelTypeSchema,
   started_at: z.date(),
   author_info: AuthorInfoSchema.optional(),
-  profile: z.custom().optional(),
+  profile: ProfileSchema.optional(),
   metadata: z.record(z.unknown()).optional().default({})
 });
 function isConversationId(value) {
@@ -169,6 +180,125 @@ var ConversationParticipantSchema = z.object({
   createdAt: z.string().optional(),
   updatedAt: z.string().optional()
 });
+var ConversationsCommunicationDataSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  accountId: z.string(),
+  author: z.object({
+    address: z.string(),
+    channel: z.string(),
+    participantId: z.string().optional()
+  }),
+  content: z.object({
+    type: z.enum(["TEXT", "TRANSCRIPTION"]),
+    text: z.string(),
+    transcription: z.object({}).passthrough().optional()
+  }),
+  recipients: z.array(
+    z.object({
+      address: z.string(),
+      channel: z.string(),
+      participantId: z.string().optional(),
+      deliveryStatus: z.string().optional()
+    })
+  ),
+  channelId: z.string().optional(),
+  serviceId: z.string().optional(),
+  // Legacy/forward compatibility
+  profileId: z.string().optional(),
+  // May be included for cross-event compatibility
+  participantType: z.string().optional(),
+  // May be included for cross-event compatibility
+  status: z.enum(["ACTIVE", "INACTIVE", "CLOSED"]).optional(),
+  // May be included for cross-event compatibility
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+var ConversationsConversationDataSchema = z.object({
+  id: z.string(),
+  conversationId: z.string().optional(),
+  // Optional on input; will default to id
+  accountId: z.string(),
+  configurationId: z.string(),
+  status: z.enum(["ACTIVE", "INACTIVE", "CLOSED"]).optional(),
+  name: z.string().nullable().optional(),
+  serviceId: z.string().optional(),
+  // Legacy/forward compatibility
+  profileId: z.string().optional(),
+  // Profile ID may be included in conversation events
+  participantType: z.string().optional(),
+  // May be included for cross-event compatibility
+  // Communication-specific fields (optional for cross-event compatibility)
+  author: z.object({
+    address: z.string(),
+    channel: z.string(),
+    participantId: z.string().optional()
+  }).optional(),
+  content: z.object({
+    type: z.enum(["TEXT", "TRANSCRIPTION"]),
+    text: z.string(),
+    transcription: z.object({}).passthrough().optional()
+  }).optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+}).transform((data) => ({
+  ...data,
+  conversationId: data.conversationId ?? data.id
+}));
+var ConversationsParticipantDataSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  accountId: z.string(),
+  name: z.string(),
+  type: z.enum(["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]).optional(),
+  participantType: z.string().optional(),
+  // Legacy field name (same as 'type')
+  profileId: z.string().optional(),
+  serviceId: z.string().optional(),
+  // Legacy/forward compatibility
+  addresses: z.array(
+    z.object({
+      channel: z.string(),
+      address: z.string(),
+      channelId: z.string().optional()
+    })
+  ).optional(),
+  // Communication-specific fields (optional for cross-event compatibility)
+  author: z.object({
+    address: z.string(),
+    channel: z.string(),
+    participantId: z.string().optional()
+  }).optional(),
+  content: z.object({
+    type: z.enum(["TEXT", "TRANSCRIPTION"]),
+    text: z.string(),
+    transcription: z.object({}).passthrough().optional()
+  }).optional(),
+  // Conversation-specific fields (optional for cross-event compatibility)
+  status: z.enum(["ACTIVE", "INACTIVE", "CLOSED"]).optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+var CommunicationWebhookPayloadSchema = z.object({
+  eventType: z.enum(["COMMUNICATION_CREATED", "COMMUNICATION_UPDATED"]),
+  timestamp: z.string().optional(),
+  data: ConversationsCommunicationDataSchema
+});
+var ConversationWebhookPayloadSchema = z.object({
+  eventType: z.enum(["CONVERSATION_CREATED", "CONVERSATION_UPDATED"]),
+  timestamp: z.string().optional(),
+  data: ConversationsConversationDataSchema
+});
+var ParticipantWebhookPayloadSchema = z.object({
+  eventType: z.enum(["PARTICIPANT_ADDED", "PARTICIPANT_UPDATED", "PARTICIPANT_REMOVED"]),
+  timestamp: z.string().optional(),
+  data: ConversationsParticipantDataSchema
+});
+var ConversationsWebhookPayloadSchema = z.discriminatedUnion("eventType", [
+  CommunicationWebhookPayloadSchema,
+  ConversationWebhookPayloadSchema,
+  ParticipantWebhookPayloadSchema
+]);
 
 // packages/core/src/types/tac.ts
 var TACChannelTypeSchema = z.enum([
@@ -193,7 +323,7 @@ var TACCommunicationAuthorSchema = z.object({
   // Common fields (both APIs)
   address: z.string(),
   channel: TACChannelTypeSchema,
-  // Maestro-only fields
+  // Conversations API-only fields
   participant_id: z.string().optional(),
   delivery_status: TACDeliveryStatusSchema.optional(),
   // Memory-only fields
@@ -203,11 +333,11 @@ var TACCommunicationAuthorSchema = z.object({
   profile_id: z.string().optional()
 });
 var TACCommunicationContentSchema = z.object({
-  // Maestro-only: content type discriminator
+  // Conversations API-only: content type discriminator
   type: z.enum(["TEXT", "TRANSCRIPTION"]).optional(),
   // Both APIs: message text (optional in unified model to handle both)
   text: z.string().optional(),
-  // Maestro-only: transcription metadata
+  // Conversations API-only: transcription metadata
   transcription: TranscriptionSchema.optional()
 });
 var TACCommunicationSchema = z.object({
@@ -219,7 +349,7 @@ var TACCommunicationSchema = z.object({
   channel_id: z.string().optional(),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
-  // Maestro-only fields
+  // Conversations API-only fields
   conversation_id: z.string().optional(),
   account_id: z.string().optional()
 });
@@ -232,9 +362,9 @@ var TACMemoryResponse = class {
   _data;
   _communications;
   /**
-   * Initialize wrapper with either Memory or Maestro data.
+   * Initialize wrapper with either Memory or Conversations API data.
    *
-   * @param data - Either MemoryRetrievalResponse (Memory) or Communication[] (Maestro)
+   * @param data - Either MemoryRetrievalResponse (Memory) or Communication[] (Conversations API)
    */
   constructor(data) {
     this._data = data;
@@ -249,7 +379,7 @@ var TACMemoryResponse = class {
   /**
    * Get observation memories.
    *
-   * @returns List of observations if Memory is configured, empty array for Maestro fallback
+   * @returns List of observations if Memory is configured, empty array for Conversations API fallback
    */
   get observations() {
     if (isMemoryRetrievalResponse(this._data)) {
@@ -260,7 +390,7 @@ var TACMemoryResponse = class {
   /**
    * Get summary memories.
    *
-   * @returns List of summaries if Memory is configured, empty array for Maestro fallback
+   * @returns List of summaries if Memory is configured, empty array for Conversations API fallback
    */
   get summaries() {
     if (isMemoryRetrievalResponse(this._data)) {
@@ -272,7 +402,7 @@ var TACMemoryResponse = class {
    * Get communications in unified format with all available fields.
    *
    * Communications are converted to a common format during initialization that includes
-   * all fields from both Memory and Maestro APIs. Fields not available from a particular
+   * all fields from both Memory and Conversations API. Fields not available from a particular
    * API will be undefined.
    *
    * @returns List of unified communications with all available fields
@@ -284,7 +414,7 @@ var TACMemoryResponse = class {
    * Check if Memory API is configured and providing full features.
    *
    * @returns true if Memory is configured (observations/summaries available),
-   *          false if using Maestro fallback (only communications available)
+   *          false if using Conversations API fallback (only communications available)
    */
   get hasMemoryFeatures() {
     return isMemoryRetrievalResponse(this._data);
@@ -578,6 +708,12 @@ var OpenAIToolSchema = z.object({
     description: z.string(),
     parameters: JSONSchemaSchema
   })
+});
+z.object({
+  conversationId: z.string().optional(),
+  profileId: z.string().optional(),
+  channel: z.string().optional(),
+  metadata: z.record(z.unknown()).optional()
 });
 var ToolExecutionResultSchema = z.object({
   success: z.boolean(),
@@ -2085,6 +2221,12 @@ var TAC = class {
     return this.channels.get(channelType);
   }
   /**
+   * Get all registered channels
+   */
+  getChannels() {
+    return Array.from(this.channels.values());
+  }
+  /**
    * Get configuration
    */
   getConfig() {
@@ -2259,8 +2401,6 @@ var TAC = class {
     this.logger.info("TAC shutdown complete");
   }
 };
-
-// packages/core/src/channels/base.ts
 var BaseChannel = class {
   tac;
   config;
@@ -2291,6 +2431,206 @@ var BaseChannel = class {
       case "error":
         this.callbacks.onError = callback;
         break;
+    }
+  }
+  /**
+   * Process Conversations webhook
+   * This is the default implementation that handles standard Conversations events.
+   * Channels can override to add channel-specific behavior.
+   */
+  async processConversationsWebhook(payload) {
+    this.logger.debug(
+      { operation: "conversations_webhook_processing", payload },
+      "Processing Conversations webhook"
+    );
+    try {
+      const validationResult = this.validateConversationsWebhookPayload(payload);
+      if (!validationResult.success) {
+        this.logger.error(
+          {
+            validation_errors: validationResult.error.errors,
+            payload,
+            operation: "conversations_webhook_validation"
+          },
+          "Invalid Conversations webhook payload"
+        );
+        throw new Error("Invalid Conversations webhook payload");
+      }
+      const webhookData = validationResult.data;
+      const eventType = webhookData.eventType;
+      const conversationId = webhookData.data.conversationId ?? webhookData.data.id;
+      this.logger.info(
+        {
+          event_type: eventType,
+          conversation_id: conversationId,
+          channel: this.channelType
+        },
+        "Processing Conversations webhook event"
+      );
+      switch (eventType) {
+        case "CONVERSATION_CREATED":
+          this.handleConversationCreated(webhookData);
+          break;
+        case "PARTICIPANT_ADDED":
+          this.handleParticipantAdded(webhookData);
+          break;
+        case "PARTICIPANT_UPDATED":
+          this.handleParticipantUpdated(webhookData);
+          break;
+        case "PARTICIPANT_REMOVED":
+          this.handleParticipantRemoved(webhookData);
+          break;
+        case "COMMUNICATION_CREATED":
+          await this.handleCommunicationCreated(webhookData);
+          break;
+        case "COMMUNICATION_UPDATED":
+          await this.handleCommunicationUpdated(webhookData);
+          break;
+        case "CONVERSATION_UPDATED":
+          await this.handleConversationUpdated(webhookData);
+          break;
+        default: {
+          this.logger.warn(
+            {
+              event_type: eventType,
+              conversation_id: conversationId,
+              channel: this.channelType
+            },
+            "Unhandled Conversations event type"
+          );
+          break;
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        { err: error, operation: "conversations_webhook_processing" },
+        "Conversations webhook processing error"
+      );
+      this.handleError(error instanceof Error ? error : new Error(String(error)), { payload });
+    }
+  }
+  /**
+   * Validate Conversations webhook payload structure using Zod schema
+   * Returns parse result with success flag and either data or error details
+   */
+  validateConversationsWebhookPayload(payload) {
+    if (!this.validateWebhookPayload(payload)) {
+      return {
+        success: false,
+        error: new z.ZodError([
+          {
+            code: "invalid_type",
+            expected: "object",
+            received: typeof payload,
+            path: [],
+            message: "Payload is null or undefined"
+          }
+        ])
+      };
+    }
+    return ConversationsWebhookPayloadSchema.safeParse(payload);
+  }
+  /**
+   * Handle CONVERSATION_CREATED event
+   */
+  handleConversationCreated(payload) {
+    const conversationId = this.extractConversationId(payload);
+    const profileId = this.extractProfileId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in CONVERSATION_CREATED event");
+    }
+    this.startConversation(conversationId, profileId ?? void 0, payload.data.serviceId);
+  }
+  /**
+   * Handle PARTICIPANT_ADDED event
+   */
+  handleParticipantAdded(payload) {
+    const conversationId = this.extractConversationId(payload);
+    const profileId = this.extractProfileId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in PARTICIPANT_ADDED event");
+    }
+    if (this.isConversationActive(conversationId)) {
+      const session = this.getConversationSession(conversationId);
+      if (session && profileId) {
+        session.profile_id = profileId;
+      }
+      if (session && payload.data.serviceId) {
+        session.service_id = payload.data.serviceId;
+      }
+    } else {
+      this.startConversation(conversationId, profileId ?? void 0, payload.data.serviceId);
+    }
+  }
+  /**
+   * Handle PARTICIPANT_UPDATED event
+   */
+  handleParticipantUpdated(payload) {
+    const conversationId = this.extractConversationId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in PARTICIPANT_UPDATED event");
+    }
+    this.logger.debug(
+      { conversation_id: conversationId, participant_type: payload.data.participantType },
+      "Participant updated"
+    );
+  }
+  /**
+   * Handle PARTICIPANT_REMOVED event
+   */
+  handleParticipantRemoved(payload) {
+    const conversationId = this.extractConversationId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in PARTICIPANT_REMOVED event");
+    }
+    this.logger.info(
+      { conversation_id: conversationId, participant_type: payload.data.participantType },
+      "Participant removed from conversation"
+    );
+  }
+  /**
+   * Handle COMMUNICATION_CREATED event
+   * Override in channel-specific classes to add message handling logic
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
+  async handleCommunicationCreated(payload) {
+    const conversationId = this.extractConversationId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in COMMUNICATION_CREATED event");
+    }
+    if (!this.isConversationActive(conversationId)) {
+      const profileId = this.extractProfileId(payload);
+      this.startConversation(conversationId, profileId ?? void 0, payload.data.serviceId);
+    }
+  }
+  /**
+   * Handle COMMUNICATION_UPDATED event
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
+  async handleCommunicationUpdated(payload) {
+    const conversationId = this.extractConversationId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in COMMUNICATION_UPDATED event");
+    }
+    this.logger.debug(
+      { conversation_id: conversationId, communication_id: payload.data.id },
+      "Communication updated"
+    );
+  }
+  /**
+   * Handle CONVERSATION_UPDATED event
+   */
+  async handleConversationUpdated(payload) {
+    const conversationId = this.extractConversationId(payload);
+    if (!conversationId) {
+      throw new Error("Missing conversation ID in CONVERSATION_UPDATED event");
+    }
+    if (payload.data.status === "CLOSED") {
+      this.logger.info(
+        { conversation_id: conversationId, status: payload.data.status },
+        "Conversation closed by Conversations Service"
+      );
+      await this.endConversation(conversationId);
     }
   }
   /**
@@ -2399,6 +2739,34 @@ var BaseChannel = class {
     return payload !== null && payload !== void 0;
   }
   /**
+   * Extract conversation ID from Conversations webhook payload
+   */
+  extractConversationId(payload) {
+    const validationResult = this.validateConversationsWebhookPayload(payload);
+    if (!validationResult.success) {
+      return null;
+    }
+    const conversationId = validationResult.data.data.conversationId || validationResult.data.data.id;
+    if (conversationId && typeof conversationId === "string" && isConversationId(conversationId)) {
+      return conversationId;
+    }
+    return null;
+  }
+  /**
+   * Extract profile ID from Conversations webhook payload
+   */
+  extractProfileId(payload) {
+    const validationResult = this.validateConversationsWebhookPayload(payload);
+    if (!validationResult.success) {
+      return null;
+    }
+    const profileId = validationResult.data.data.profileId;
+    if (profileId && typeof profileId === "string" && isProfileId(profileId)) {
+      return profileId;
+    }
+    return null;
+  }
+  /**
    * Cleanup resources when shutting down
    */
   shutdown() {
@@ -2431,218 +2799,47 @@ var SMSChannel = class extends BaseChannel {
     }
   }
   /**
-   * Process SMS webhook from Twilio Conversations Service
+   * Process SMS webhook - delegates to Conversations webhook handler
    */
   async processWebhook(payload) {
-    this.logger.debug({ operation: "webhook_processing", payload }, "Processing webhook");
-    try {
-      if (!this.validateWebhookPayload(payload)) {
-        throw new Error("Invalid webhook payload");
-      }
-      const webhookData = payload;
-      const eventType = webhookData.eventType;
-      const conversationId = webhookData.data?.conversationId || webhookData.data?.id;
-      this.logger.info(
-        {
-          event_type: eventType,
-          raw_event_type: webhookData.eventType,
-          conversation_id: conversationId
-        },
-        "Processing webhook event"
-      );
-      switch (eventType) {
-        case "CONVERSATION_CREATED":
-          this.logger.debug(
-            { conversation_id: conversationId, profile_id: webhookData.data?.profileId },
-            "Handling CONVERSATION_CREATED"
-          );
-          this.handleConversationCreated(webhookData);
-          break;
-        case "PARTICIPANT_ADDED":
-          this.logger.debug(
-            { conversation_id: conversationId, profile_id: webhookData.data?.profileId },
-            "Handling PARTICIPANT_ADDED"
-          );
-          this.handleParticipantAdded(webhookData);
-          break;
-        case "COMMUNICATION_CREATED":
-          this.logger.debug({ conversation_id: conversationId }, "Handling COMMUNICATION_CREATED");
-          await this.handleCommunicationCreated(webhookData);
-          break;
-        case "CONVERSATION_UPDATED":
-          this.logger.debug(
-            { conversation_id: conversationId, status: webhookData.data?.status },
-            "Handling CONVERSATION_UPDATED"
-          );
-          await this.handleConversationUpdated(webhookData);
-          break;
-        default:
-          this.logger.warn(
-            {
-              event_type: eventType,
-              raw_event_type: webhookData.eventType,
-              conversation_id: conversationId,
-              payload
-            },
-            "Unhandled event type - this event will be ignored"
-          );
-      }
-      this.logger.debug({ event_type: eventType }, "Webhook processing completed");
-    } catch (error) {
-      this.logger.error(
-        { err: error, operation: "webhook_processing" },
-        "Webhook processing error"
-      );
-      this.handleError(error instanceof Error ? error : new Error(String(error)), { payload });
-    }
+    await this.processConversationsWebhook(payload);
   }
   /**
-   * Handle conversation creation event
-   */
-  handleConversationCreated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-    if (!conversationId) {
-      this.logger.warn(
-        { payload, operation: "handle_conversation_created" },
-        "Missing conversation ID in conversation.created event"
-      );
-      throw new Error("Missing conversation ID in conversation.created event");
-    }
-    this.startConversation(conversationId, profileId ?? void 0, payload.data?.serviceId);
-  }
-  /**
-   * Handle participant added event
-   */
-  handleParticipantAdded(payload) {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-    if (!conversationId) {
-      this.logger.warn(
-        { payload, operation: "handle_participant_added" },
-        "Missing conversation ID in participant.added event"
-      );
-      throw new Error("Missing conversation ID in participant.added event");
-    }
-    if (this.isConversationActive(conversationId)) {
-      if (profileId) {
-        const session = this.getConversationSession(conversationId);
-        if (session) {
-          this.logger.debug(
-            {
-              conversation_id: conversationId,
-              old_profile_id: session.profile_id,
-              new_profile_id: profileId
-            },
-            "Updating conversation profile ID from participant.added"
-          );
-          session.profile_id = profileId;
-        }
-      }
-      if (payload.data?.serviceId) {
-        const session = this.getConversationSession(conversationId);
-        if (session && session.service_id !== payload.data.serviceId) {
-          this.logger.debug(
-            {
-              conversation_id: conversationId,
-              old_service_id: session.service_id,
-              new_service_id: payload.data.serviceId
-            },
-            "Updating conversation configuration ID from participant.added"
-          );
-          session.service_id = payload.data.serviceId;
-        }
-      }
-    } else {
-      this.logger.debug(
-        { conversation_id: conversationId, profile_id: profileId },
-        "Auto-starting conversation from participant.added"
-      );
-      this.startConversation(conversationId, profileId ?? void 0, payload.data?.serviceId);
-    }
-  }
-  /**
-   * Handle new communication event (incoming message)
+   * Handle COMMUNICATION_CREATED with SMS-specific logic
+   * Override from base class to add message processing
    */
   async handleCommunicationCreated(payload) {
+    await super.handleCommunicationCreated(payload);
     const conversationId = this.extractConversationId(payload);
     const profileId = this.extractProfileId(payload);
-    const message = payload.data?.content?.text?.trim();
-    const author = payload.data?.author?.address || "unknown";
-    this.logger.info(
-      {
-        conversation_id: conversationId,
-        profile_id: profileId,
-        author,
-        message,
-        message_length: message?.length,
-        operation: "handle_communication_created"
-      },
-      "Handling communication.created"
-    );
-    if (!conversationId) {
-      this.logger.warn(
-        { payload, operation: "handle_communication_created" },
-        "Missing conversation ID in communication.created event"
-      );
-      throw new Error("Missing conversation ID in communication.created event");
-    }
-    if (!message) {
-      this.logger.info({ conversation_id: conversationId }, "Ignoring empty message");
+    const message = payload.data.content.text.trim();
+    const author = payload.data.author.address || "unknown";
+    if (!conversationId || !message) {
       return;
     }
     if (author === this.config.twilioPhoneNumber) {
-      this.logger.info(
-        {
-          conversation_id: conversationId,
-          author_address: author
-        },
-        "Ignoring message from AI agent"
-      );
+      this.logger.info({ conversation_id: conversationId }, "Ignoring message from AI agent");
       return;
-    }
-    if (!this.isConversationActive(conversationId)) {
-      this.logger.debug({ conversation_id: conversationId }, "Starting new conversation");
-      this.startConversation(conversationId, profileId ?? void 0, payload.data?.serviceId);
-    } else if (payload.data?.serviceId) {
-      const session2 = this.getConversationSession(conversationId);
-      if (session2 && session2.service_id !== payload.data.serviceId) {
-        this.logger.debug(
-          {
-            conversation_id: conversationId,
-            old_service_id: session2.service_id,
-            new_service_id: payload.data.serviceId
-          },
-          "Updating conversation configuration ID from communication.created"
-        );
-        session2.service_id = payload.data.serviceId;
-      }
     }
     const session = this.getConversationSession(conversationId);
     if (session) {
       session.author_info = {
         address: author,
-        participant_id: payload.data?.author?.participantId
+        participant_id: payload.data.author.participantId
       };
     }
     let userMemory;
     if (session && this.tac.isMemoryEnabled()) {
-      this.logger.debug({ conversation_id: conversationId, author }, "Retrieving user memory");
       try {
         userMemory = await this.tac.retrieveMemory(session, message);
-        this.logger.debug(
-          { conversation_id: conversationId, profile_id: session.profile_id },
-          "User memory retrieved"
-        );
       } catch (error) {
         this.logger.warn(
           { err: error, conversation_id: conversationId },
-          "Failed to retrieve user memory"
+          "Failed to retrieve memory"
         );
       }
     }
     if (this.smsCallbacks.onMessageReceived) {
-      this.logger.debug({ conversation_id: conversationId }, "Invoking message received callback");
       this.smsCallbacks.onMessageReceived({
         conversationId,
         profileId: profileId ?? void 0,
@@ -2650,22 +2847,6 @@ var SMSChannel = class extends BaseChannel {
         author,
         userMemory
       });
-    }
-  }
-  /**
-   * Handle conversation updated event
-   */
-  async handleConversationUpdated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in conversation.updated event");
-    }
-    if (payload.data?.status === "CLOSED") {
-      this.logger.info(
-        { conversation_id: conversationId, status: payload.data.status },
-        "Conversation closed, cleaning up"
-      );
-      await this.endConversation(conversationId);
     }
   }
   /**
@@ -2758,46 +2939,6 @@ var SMSChannel = class extends BaseChannel {
       throw error;
     }
   }
-  /**
-   * Extract conversation ID from webhook payload
-   */
-  extractConversationId(payload) {
-    const webhookData = payload;
-    const conversationId = webhookData.data?.conversationId || webhookData.data?.id;
-    if (conversationId && isConversationId(conversationId)) {
-      return conversationId;
-    }
-    return null;
-  }
-  /**
-   * Extract profile ID from webhook payload
-   */
-  extractProfileId(payload) {
-    const webhookData = payload;
-    const profileId = webhookData.data?.profileId;
-    if (profileId && isProfileId(profileId)) {
-      this.logger.debug(
-        { profile_id: profileId, conversation_id: webhookData.data?.conversationId },
-        "Extracted profile ID from webhook payload"
-      );
-      return profileId;
-    }
-    this.logger.debug(
-      { conversation_id: webhookData.data?.conversationId },
-      "Profile ID missing or invalid in webhook payload"
-    );
-    return null;
-  }
-  /**
-   * Validate SMS webhook payload structure
-   */
-  validateWebhookPayload(payload) {
-    if (!super.validateWebhookPayload(payload)) {
-      return false;
-    }
-    const webhookData = payload;
-    return typeof webhookData === "object" && typeof webhookData.eventType === "string" && webhookData.eventType.length > 0;
-  }
 };
 var VoiceChannel = class extends BaseChannel {
   webSocketConnections;
@@ -2841,12 +2982,11 @@ var VoiceChannel = class extends BaseChannel {
     }
   }
   /**
-   * Process webhook - Voice channel doesn't use traditional webhooks,
-   * but this method is required by the base class
+   * Process Voice webhook - delegates to Conversations webhook handler
+   * Voice receives Conversations events for conversation lifecycle
    */
-  processWebhook(_payload) {
-    this.logger.warn("processWebhook called but Voice channel uses WebSocket connections");
-    return Promise.resolve();
+  async processWebhook(payload) {
+    await this.processConversationsWebhook(payload);
   }
   /**
    * Get active WebSocket connection for a conversation
@@ -3236,18 +3376,6 @@ var VoiceChannel = class extends BaseChannel {
     return filtered;
   }
   /**
-   * Extract conversation ID - Not applicable for Voice channel
-   */
-  extractConversationId(_payload) {
-    return null;
-  }
-  /**
-   * Extract profile ID - Not applicable for Voice channel
-   */
-  extractProfileId(_payload) {
-    return null;
-  }
-  /**
    * Cleanup channel state on shutdown
    *
    * Note: WebSocket connections are managed by the server and closed there.
@@ -3631,9 +3759,9 @@ var DEFAULT_CONFIG = {
     port: 3e3
   },
   webhookPaths: {
-    sms: "/webhook",
     twiml: "/twiml",
     ws: "/ws",
+    conversation: "/conversation",
     conversationRelayCallback: "/conversation-relay-callback"
   },
   development: false,
@@ -3706,23 +3834,128 @@ var TACServer = class {
     });
   }
   /**
+   * Extract channel string from webhook payload data
+   * Checks author.channel first (COMMUNICATION events),
+   * then addresses[0].channel (PARTICIPANT events)
+   */
+  extractChannelFromWebhook(webhookData) {
+    if ("author" in webhookData && webhookData.author?.channel) {
+      return webhookData.author.channel.toLowerCase();
+    }
+    if ("addresses" in webhookData && Array.isArray(webhookData.addresses)) {
+      const addresses = webhookData.addresses;
+      if (addresses.length > 0 && addresses[0]?.channel) {
+        return addresses[0].channel.toLowerCase();
+      }
+    }
+    return void 0;
+  }
+  /**
    * Setup routes
    */
   async setupRoutes() {
     this.fastify.post(
-      this.config.webhookPaths.sms || "/sms",
+      this.config.webhookPaths.conversation || "/conversation",
       async (request, reply) => {
         try {
-          const smsChannel = this.tac.getChannel("sms");
-          if (!smsChannel) {
-            await reply.code(500).send({ error: "SMS channel not available" });
+          const parseResult = ConversationsWebhookPayloadSchema.safeParse(request.body);
+          if (!parseResult.success) {
+            this.fastify.log.error(
+              { errors: parseResult.error.errors },
+              "Invalid Conversations webhook payload"
+            );
+            await reply.code(400).send({ error: "Invalid webhook payload" });
             return;
           }
-          await smsChannel.processWebhook(request.body);
+          const payload = parseResult.data;
+          const webhookData = payload.data;
+          const author = "author" in webhookData ? webhookData.author : void 0;
+          const channelString = this.extractChannelFromWebhook(webhookData);
+          if (channelString && !author?.channel && "addresses" in webhookData) {
+            this.fastify.log.debug(
+              {
+                event_type: payload.eventType,
+                addresses_count: Array.isArray(webhookData.addresses) ? webhookData.addresses.length : 0,
+                extracted_channel: channelString
+              },
+              "Extracted channel from participant addresses"
+            );
+          }
+          if (!channelString) {
+            const eventType2 = payload.eventType;
+            const conversationId2 = webhookData.conversationId;
+            if (eventType2 === "CONVERSATION_UPDATED" || eventType2 === "CONVERSATION_CREATED") {
+              const channels = this.tac.getChannels();
+              let targetChannel2;
+              for (const channel of channels) {
+                if (channel.isConversationActive(conversationId2)) {
+                  targetChannel2 = channel;
+                  break;
+                }
+              }
+              if (targetChannel2) {
+                this.fastify.log.info(
+                  {
+                    event_type: eventType2,
+                    conversation_id: conversationId2,
+                    channel: targetChannel2.channelType
+                  },
+                  `\u2192 Routing lifecycle event ${eventType2} to ${targetChannel2.channelType} channel`
+                );
+                await targetChannel2.processWebhook(payload);
+                await reply.code(200).send({ status: "ok" });
+                return;
+              } else {
+                this.fastify.log.info(
+                  {
+                    event_type: eventType2,
+                    conversation_id: conversationId2
+                  },
+                  `\u2713 Lifecycle event ${eventType2} acknowledged (conversation not yet in channel)`
+                );
+                await reply.code(200).send({ status: "ok" });
+                return;
+              }
+            }
+            this.fastify.log.info(
+              {
+                event_type: eventType2,
+                conversation_id: conversationId2
+              },
+              `\u2713 Skipped ${eventType2} event (no channel info)`
+            );
+            await reply.code(200).send({ status: "ok" });
+            return;
+          }
+          const isValidChannel = (ch) => {
+            return ch === "sms" || ch === "voice";
+          };
+          if (!isValidChannel(channelString)) {
+            this.fastify.log.warn({ channel: channelString }, "Unknown channel type in webhook");
+            await reply.code(400).send({ error: "Unknown channel type" });
+            return;
+          }
+          const targetChannel = this.tac.getChannel(channelString);
+          if (!targetChannel) {
+            this.fastify.log.error({ channel: channelString }, "Channel not registered");
+            await reply.code(500).send({ error: "Channel not available" });
+            return;
+          }
+          const eventType = payload.eventType;
+          const conversationId = webhookData.conversationId || webhookData.id;
+          this.fastify.log.info(
+            {
+              event_type: eventType,
+              conversation_id: conversationId,
+              channel: channelString
+            },
+            `\u2192 Routing ${eventType} to ${channelString} channel`
+          );
+          await targetChannel.processWebhook(payload);
           await reply.code(200).send({ status: "ok" });
         } catch (error) {
           this.fastify.log.error(
-            "SMS webhook error: " + (error instanceof Error ? error.message : String(error))
+            "Conversations webhook error: " + (error instanceof Error ? error.message : String(error))
           );
           await reply.code(500).send({
             error: "Internal server error",
@@ -3735,15 +3968,15 @@ var TACServer = class {
       this.config.webhookPaths.twiml || "/twiml",
       async (request, reply) => {
         try {
+          const formData = request.body;
+          const fromNumber = formData["From"] || "";
+          const toNumber = formData["To"] || "";
+          const callSid = formData["CallSid"] || "";
           const voiceChannel = this.tac.getChannel("voice");
           if (!voiceChannel) {
             await reply.code(500).send({ error: "Voice channel not available" });
             return;
           }
-          const formData = request.body;
-          const fromNumber = formData["From"] || "";
-          const toNumber = formData["To"] || "";
-          const callSid = formData["CallSid"] || "";
           const protocol = request.headers["x-forwarded-proto"] || "http";
           const host = request.headers.host;
           const websocketUrl = `${protocol === "https" ? "wss" : "ws"}://${host}${this.config.webhookPaths.ws || "/ws"}`;
@@ -3880,9 +4113,9 @@ var TACServer = class {
         {
           host: voiceConfig.host,
           port: voiceConfig.port,
-          sms_webhook: this.config.webhookPaths.sms,
           twiml_webhook: this.config.webhookPaths.twiml,
           ws_websocket: this.config.webhookPaths.ws,
+          conversation_webhook: this.config.webhookPaths.conversation,
           conversation_relay_callback: this.config.webhookPaths.conversationRelayCallback,
           ...this.config.webhookPaths.cintel && {
             cintel_webhook: this.config.webhookPaths.cintel
@@ -3953,6 +4186,6 @@ var TACServer = class {
   }
 };
 
-export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ProfileLookupResponseSchema, ProfileResponseSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

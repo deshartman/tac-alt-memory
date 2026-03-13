@@ -63,6 +63,30 @@ declare const TACConfigSchema: z.ZodObject<{
 }>;
 type TACConfigData = z.infer<typeof TACConfigSchema>;
 /**
+ * Webhook path configuration
+ * Matches TACServerConfig.webhookPaths interface
+ */
+declare const WebhookPathsSchema: z.ZodObject<{
+    twiml: z.ZodOptional<z.ZodString>;
+    ws: z.ZodOptional<z.ZodString>;
+    conversation: z.ZodOptional<z.ZodString>;
+    conversationRelayCallback: z.ZodOptional<z.ZodString>;
+    cintel: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    twiml?: string | undefined;
+    ws?: string | undefined;
+    conversation?: string | undefined;
+    conversationRelayCallback?: string | undefined;
+    cintel?: string | undefined;
+}, {
+    twiml?: string | undefined;
+    ws?: string | undefined;
+    conversation?: string | undefined;
+    conversationRelayCallback?: string | undefined;
+    cintel?: string | undefined;
+}>;
+type WebhookPaths = z.infer<typeof WebhookPathsSchema>;
+/**
  * Environment variable mapping for configuration
  */
 declare const EnvironmentVariables: {
@@ -126,7 +150,7 @@ type MemoryDeliveryStatus = z.infer<typeof MemoryDeliveryStatusSchema>;
 /**
  * Participant in a Memory communication (author or recipient).
  *
- * Memory API has different field requirements than Maestro:
+ * Memory API has different field requirements than Conversations API:
  * - Uses `id` and `name` instead of just `participant_id`
  * - Includes `type` and `profile_id` fields
  */
@@ -159,7 +183,7 @@ type MemoryParticipant = z.infer<typeof MemoryParticipantSchema>;
 /**
  * Content of a Memory communication.
  *
- * Memory API content is simpler than Maestro - no type discriminator field.
+ * Memory API content is simpler than Conversations API - no type discriminator field.
  * The `text` field is optional in Memory API models.
  */
 declare const MemoryCommunicationContentSchema: z.ZodObject<{
@@ -173,7 +197,7 @@ type MemoryCommunicationContent = z.infer<typeof MemoryCommunicationContentSchem
 /**
  * A communication from Memory API (historical conversation data).
  *
- * Memory API has different field requirements than Maestro:
+ * Memory API has different field requirements than Conversations API:
  * - No `conversation_id`, `account_id`, or `content.type` fields
  * - Participants use `id`, `name`, `type`, `profile_id`
  */
@@ -813,7 +837,7 @@ declare const ParticipantAddressSchema: z.ZodObject<{
 }>;
 type ParticipantAddress = z.infer<typeof ParticipantAddressSchema>;
 /**
- * Communication participant for Conversations Service API (Maestro).
+ * Communication participant for Conversations Service API.
  *
  * Note: participant_id is required for SDK validation when creating communications.
  */
@@ -894,7 +918,7 @@ type Transcription = z.infer<typeof TranscriptionSchema>;
 /**
  * Communication content (ContentText or ContentTranscription).
  *
- * Note: In Maestro API, both `type` and `text` are required fields.
+ * Note: In Conversations API, both `type` and `text` are required fields.
  */
 declare const CommunicationContentSchema: z.ZodObject<{
     type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
@@ -964,7 +988,7 @@ declare const CommunicationContentSchema: z.ZodObject<{
 }>;
 type CommunicationContent = z.infer<typeof CommunicationContentSchema>;
 /**
- * Communication from Conversations Service API (Maestro).
+ * Communication from Conversations Service API.
  *
  * Note: `created_at` is optional per API spec.
  */
@@ -1158,10 +1182,17 @@ type AuthorInfo = z.infer<typeof AuthorInfoSchema>;
 /**
  * Profile information for a conversation participant
  */
-interface Profile {
+declare const ProfileSchema: z.ZodObject<{
+    profile_id: z.ZodString;
+    traits: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
     profile_id: string;
-    traits?: Record<string, unknown>;
-}
+    traits?: Record<string, unknown> | undefined;
+}, {
+    profile_id: string;
+    traits?: Record<string, unknown> | undefined;
+}>;
+type Profile = z.infer<typeof ProfileSchema>;
 /**
  * Conversation session context
  */
@@ -1181,7 +1212,16 @@ declare const ConversationSessionSchema: z.ZodObject<{
         address: string;
         participant_id?: string | undefined;
     }>>;
-    profile: z.ZodOptional<z.ZodType<Profile, z.ZodTypeDef, Profile>>;
+    profile: z.ZodOptional<z.ZodObject<{
+        profile_id: z.ZodString;
+        traits: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, "strip", z.ZodTypeAny, {
+        profile_id: string;
+        traits?: Record<string, unknown> | undefined;
+    }, {
+        profile_id: string;
+        traits?: Record<string, unknown> | undefined;
+    }>>;
     metadata: z.ZodDefault<z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
 }, "strip", z.ZodTypeAny, {
     channel: "sms" | "voice";
@@ -1194,7 +1234,10 @@ declare const ConversationSessionSchema: z.ZodObject<{
         address: string;
         participant_id?: string | undefined;
     } | undefined;
-    profile?: Profile | undefined;
+    profile?: {
+        profile_id: string;
+        traits?: Record<string, unknown> | undefined;
+    } | undefined;
 }, {
     channel: "sms" | "voice";
     started_at: Date;
@@ -1205,7 +1248,10 @@ declare const ConversationSessionSchema: z.ZodObject<{
         address: string;
         participant_id?: string | undefined;
     } | undefined;
-    profile?: Profile | undefined;
+    profile?: {
+        profile_id: string;
+        traits?: Record<string, unknown> | undefined;
+    } | undefined;
     metadata?: Record<string, unknown> | undefined;
 }>;
 type ConversationSession = z.infer<typeof ConversationSessionSchema>;
@@ -1328,6 +1374,1445 @@ declare const ConversationParticipantSchema: z.ZodObject<{
     }[] | undefined;
 }>;
 type ConversationParticipant = z.infer<typeof ConversationParticipantSchema>;
+/**
+ * Communication resource data from COMMUNICATION_CREATED/UPDATED webhook events.
+ * Matches the Conversations API Communication resource structure (camelCase).
+ */
+declare const ConversationsCommunicationDataSchema: z.ZodObject<{
+    id: z.ZodString;
+    conversationId: z.ZodString;
+    accountId: z.ZodString;
+    author: z.ZodObject<{
+        address: z.ZodString;
+        channel: z.ZodString;
+        participantId: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    }, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    }>;
+    content: z.ZodObject<{
+        type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+        text: z.ZodString;
+        transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    }, {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    }>;
+    recipients: z.ZodArray<z.ZodObject<{
+        address: z.ZodString;
+        channel: z.ZodString;
+        participantId: z.ZodOptional<z.ZodString>;
+        deliveryStatus: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+        deliveryStatus?: string | undefined;
+    }, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+        deliveryStatus?: string | undefined;
+    }>, "many">;
+    channelId: z.ZodOptional<z.ZodString>;
+    serviceId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodString>;
+    participantType: z.ZodOptional<z.ZodString>;
+    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+    createdAt: z.ZodOptional<z.ZodString>;
+    updatedAt: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    author: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    };
+    content: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    };
+    recipients: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+        deliveryStatus?: string | undefined;
+    }[];
+    accountId: string;
+    conversationId: string;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    channelId?: string | undefined;
+    profileId?: string | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}, {
+    id: string;
+    author: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    };
+    content: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    };
+    recipients: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+        deliveryStatus?: string | undefined;
+    }[];
+    accountId: string;
+    conversationId: string;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    channelId?: string | undefined;
+    profileId?: string | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}>;
+type ConversationsCommunicationData = z.infer<typeof ConversationsCommunicationDataSchema>;
+/**
+ * Conversation resource data from CONVERSATION_CREATED/UPDATED webhook events.
+ * Matches the Conversations API Conversation resource structure (camelCase).
+ *
+ * Note: For Conversation events, the conversation ID is in the `id` field.
+ * The conversationId field is optional on input and defaults to id for type consistency.
+ */
+declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
+    id: z.ZodString;
+    conversationId: z.ZodOptional<z.ZodString>;
+    accountId: z.ZodString;
+    configurationId: z.ZodString;
+    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+    name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    serviceId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodString>;
+    participantType: z.ZodOptional<z.ZodString>;
+    author: z.ZodOptional<z.ZodObject<{
+        address: z.ZodString;
+        channel: z.ZodString;
+        participantId: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    }, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    }>>;
+    content: z.ZodOptional<z.ZodObject<{
+        type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+        text: z.ZodString;
+        transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    }, {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    }>>;
+    createdAt: z.ZodOptional<z.ZodString>;
+    updatedAt: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    accountId: string;
+    configurationId: string;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    name?: string | null | undefined;
+    author?: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    } | undefined;
+    content?: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    } | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    conversationId?: string | undefined;
+    profileId?: string | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}, {
+    id: string;
+    accountId: string;
+    configurationId: string;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    name?: string | null | undefined;
+    author?: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    } | undefined;
+    content?: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    } | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    conversationId?: string | undefined;
+    profileId?: string | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}>, {
+    conversationId: string;
+    id: string;
+    accountId: string;
+    configurationId: string;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    name?: string | null | undefined;
+    author?: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    } | undefined;
+    content?: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    } | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    profileId?: string | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}, {
+    id: string;
+    accountId: string;
+    configurationId: string;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    name?: string | null | undefined;
+    author?: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    } | undefined;
+    content?: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    } | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    conversationId?: string | undefined;
+    profileId?: string | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}>;
+type ConversationsConversationData = z.infer<typeof ConversationsConversationDataSchema>;
+/**
+ * Participant resource data from PARTICIPANT_ADDED/UPDATED/REMOVED webhook events.
+ * Matches the Conversations API Participant resource structure (camelCase).
+ */
+declare const ConversationsParticipantDataSchema: z.ZodObject<{
+    id: z.ZodString;
+    conversationId: z.ZodString;
+    accountId: z.ZodString;
+    name: z.ZodString;
+    type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
+    participantType: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodString>;
+    serviceId: z.ZodOptional<z.ZodString>;
+    addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        channel: z.ZodString;
+        address: z.ZodString;
+        channelId: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        address: string;
+        channel: string;
+        channelId?: string | undefined;
+    }, {
+        address: string;
+        channel: string;
+        channelId?: string | undefined;
+    }>, "many">>;
+    author: z.ZodOptional<z.ZodObject<{
+        address: z.ZodString;
+        channel: z.ZodString;
+        participantId: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    }, {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    }>>;
+    content: z.ZodOptional<z.ZodObject<{
+        type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+        text: z.ZodString;
+        transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+    }, "strip", z.ZodTypeAny, {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    }, {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    }>>;
+    status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+    createdAt: z.ZodOptional<z.ZodString>;
+    updatedAt: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    name: string;
+    accountId: string;
+    conversationId: string;
+    type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    author?: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    } | undefined;
+    content?: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    } | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    profileId?: string | undefined;
+    addresses?: {
+        address: string;
+        channel: string;
+        channelId?: string | undefined;
+    }[] | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    accountId: string;
+    conversationId: string;
+    type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+    status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+    author?: {
+        address: string;
+        channel: string;
+        participantId?: string | undefined;
+    } | undefined;
+    content?: {
+        type: "TEXT" | "TRANSCRIPTION";
+        text: string;
+        transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+    } | undefined;
+    createdAt?: string | undefined;
+    updatedAt?: string | undefined;
+    profileId?: string | undefined;
+    addresses?: {
+        address: string;
+        channel: string;
+        channelId?: string | undefined;
+    }[] | undefined;
+    serviceId?: string | undefined;
+    participantType?: string | undefined;
+}>;
+type ConversationsParticipantData = z.infer<typeof ConversationsParticipantDataSchema>;
+/**
+ * Communication webhook payload (COMMUNICATION_CREATED/UPDATED events)
+ */
+declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
+    eventType: z.ZodEnum<["COMMUNICATION_CREATED", "COMMUNICATION_UPDATED"]>;
+    timestamp: z.ZodOptional<z.ZodString>;
+    data: z.ZodObject<{
+        id: z.ZodString;
+        conversationId: z.ZodString;
+        accountId: z.ZodString;
+        author: z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }>;
+        content: z.ZodObject<{
+            type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+            text: z.ZodString;
+            transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }>;
+        recipients: z.ZodArray<z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+            deliveryStatus: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }>, "many">;
+        channelId: z.ZodOptional<z.ZodString>;
+        serviceId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodString>;
+        participantType: z.ZodOptional<z.ZodString>;
+        status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+        createdAt: z.ZodOptional<z.ZodString>;
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventType: "COMMUNICATION_CREATED" | "COMMUNICATION_UPDATED";
+    data: {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}, {
+    eventType: "COMMUNICATION_CREATED" | "COMMUNICATION_UPDATED";
+    data: {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}>;
+type CommunicationWebhookPayload = z.infer<typeof CommunicationWebhookPayloadSchema>;
+/**
+ * Conversation webhook payload (CONVERSATION_CREATED/UPDATED events)
+ */
+declare const ConversationWebhookPayloadSchema: z.ZodObject<{
+    eventType: z.ZodEnum<["CONVERSATION_CREATED", "CONVERSATION_UPDATED"]>;
+    timestamp: z.ZodOptional<z.ZodString>;
+    data: z.ZodEffects<z.ZodObject<{
+        id: z.ZodString;
+        conversationId: z.ZodOptional<z.ZodString>;
+        accountId: z.ZodString;
+        configurationId: z.ZodString;
+        status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+        name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        serviceId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodString>;
+        participantType: z.ZodOptional<z.ZodString>;
+        author: z.ZodOptional<z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }>>;
+        content: z.ZodOptional<z.ZodObject<{
+            type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+            text: z.ZodString;
+            transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }>>;
+        createdAt: z.ZodOptional<z.ZodString>;
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>, {
+        conversationId: string;
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventType: "CONVERSATION_CREATED" | "CONVERSATION_UPDATED";
+    data: {
+        conversationId: string;
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}, {
+    eventType: "CONVERSATION_CREATED" | "CONVERSATION_UPDATED";
+    data: {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}>;
+type ConversationWebhookPayload = z.infer<typeof ConversationWebhookPayloadSchema>;
+/**
+ * Participant webhook payload (PARTICIPANT_ADDED/UPDATED/REMOVED events)
+ */
+declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
+    eventType: z.ZodEnum<["PARTICIPANT_ADDED", "PARTICIPANT_UPDATED", "PARTICIPANT_REMOVED"]>;
+    timestamp: z.ZodOptional<z.ZodString>;
+    data: z.ZodObject<{
+        id: z.ZodString;
+        conversationId: z.ZodString;
+        accountId: z.ZodString;
+        name: z.ZodString;
+        type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
+        participantType: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodString>;
+        serviceId: z.ZodOptional<z.ZodString>;
+        addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            channel: z.ZodString;
+            address: z.ZodString;
+            channelId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }>, "many">>;
+        author: z.ZodOptional<z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }>>;
+        content: z.ZodOptional<z.ZodObject<{
+            type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+            text: z.ZodString;
+            transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }>>;
+        status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+        createdAt: z.ZodOptional<z.ZodString>;
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventType: "PARTICIPANT_ADDED" | "PARTICIPANT_UPDATED" | "PARTICIPANT_REMOVED";
+    data: {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}, {
+    eventType: "PARTICIPANT_ADDED" | "PARTICIPANT_UPDATED" | "PARTICIPANT_REMOVED";
+    data: {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}>;
+type ParticipantWebhookPayload = z.infer<typeof ParticipantWebhookPayloadSchema>;
+/**
+ * Conversations webhook payload - discriminated union based on event type.
+ *
+ * Different webhook events send different resource types in the `data` field:
+ * - COMMUNICATION_CREATED/UPDATED → Communication resource
+ * - CONVERSATION_CREATED/UPDATED → Conversation resource
+ * - PARTICIPANT_ADDED/UPDATED/REMOVED → Participant resource
+ *
+ * TypeScript automatically narrows the `data` type based on `eventType` checks,
+ * eliminating the need for optional chaining and providing full type safety.
+ */
+declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventType", [z.ZodObject<{
+    eventType: z.ZodEnum<["COMMUNICATION_CREATED", "COMMUNICATION_UPDATED"]>;
+    timestamp: z.ZodOptional<z.ZodString>;
+    data: z.ZodObject<{
+        id: z.ZodString;
+        conversationId: z.ZodString;
+        accountId: z.ZodString;
+        author: z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }>;
+        content: z.ZodObject<{
+            type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+            text: z.ZodString;
+            transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }>;
+        recipients: z.ZodArray<z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+            deliveryStatus: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }>, "many">;
+        channelId: z.ZodOptional<z.ZodString>;
+        serviceId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodString>;
+        participantType: z.ZodOptional<z.ZodString>;
+        status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+        createdAt: z.ZodOptional<z.ZodString>;
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventType: "COMMUNICATION_CREATED" | "COMMUNICATION_UPDATED";
+    data: {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}, {
+    eventType: "COMMUNICATION_CREATED" | "COMMUNICATION_UPDATED";
+    data: {
+        id: string;
+        author: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        };
+        content: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        };
+        recipients: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+            deliveryStatus?: string | undefined;
+        }[];
+        accountId: string;
+        conversationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        channelId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}>, z.ZodObject<{
+    eventType: z.ZodEnum<["CONVERSATION_CREATED", "CONVERSATION_UPDATED"]>;
+    timestamp: z.ZodOptional<z.ZodString>;
+    data: z.ZodEffects<z.ZodObject<{
+        id: z.ZodString;
+        conversationId: z.ZodOptional<z.ZodString>;
+        accountId: z.ZodString;
+        configurationId: z.ZodString;
+        status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+        name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        serviceId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodString>;
+        participantType: z.ZodOptional<z.ZodString>;
+        author: z.ZodOptional<z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }>>;
+        content: z.ZodOptional<z.ZodObject<{
+            type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+            text: z.ZodString;
+            transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }>>;
+        createdAt: z.ZodOptional<z.ZodString>;
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>, {
+        conversationId: string;
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventType: "CONVERSATION_CREATED" | "CONVERSATION_UPDATED";
+    data: {
+        conversationId: string;
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}, {
+    eventType: "CONVERSATION_CREATED" | "CONVERSATION_UPDATED";
+    data: {
+        id: string;
+        accountId: string;
+        configurationId: string;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        name?: string | null | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        conversationId?: string | undefined;
+        profileId?: string | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}>, z.ZodObject<{
+    eventType: z.ZodEnum<["PARTICIPANT_ADDED", "PARTICIPANT_UPDATED", "PARTICIPANT_REMOVED"]>;
+    timestamp: z.ZodOptional<z.ZodString>;
+    data: z.ZodObject<{
+        id: z.ZodString;
+        conversationId: z.ZodString;
+        accountId: z.ZodString;
+        name: z.ZodString;
+        type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
+        participantType: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodString>;
+        serviceId: z.ZodOptional<z.ZodString>;
+        addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            channel: z.ZodString;
+            address: z.ZodString;
+            channelId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }>, "many">>;
+        author: z.ZodOptional<z.ZodObject<{
+            address: z.ZodString;
+            channel: z.ZodString;
+            participantId: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }, {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        }>>;
+        content: z.ZodOptional<z.ZodObject<{
+            type: z.ZodEnum<["TEXT", "TRANSCRIPTION"]>;
+            text: z.ZodString;
+            transcription: z.ZodOptional<z.ZodObject<{}, "passthrough", z.ZodTypeAny, z.objectOutputType<{}, z.ZodTypeAny, "passthrough">, z.objectInputType<{}, z.ZodTypeAny, "passthrough">>>;
+        }, "strip", z.ZodTypeAny, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }, {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        }>>;
+        status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
+        createdAt: z.ZodOptional<z.ZodString>;
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }, {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    eventType: "PARTICIPANT_ADDED" | "PARTICIPANT_UPDATED" | "PARTICIPANT_REMOVED";
+    data: {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectOutputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}, {
+    eventType: "PARTICIPANT_ADDED" | "PARTICIPANT_UPDATED" | "PARTICIPANT_REMOVED";
+    data: {
+        id: string;
+        name: string;
+        accountId: string;
+        conversationId: string;
+        type?: "HUMAN_AGENT" | "CUSTOMER" | "AI_AGENT" | undefined;
+        status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
+        author?: {
+            address: string;
+            channel: string;
+            participantId?: string | undefined;
+        } | undefined;
+        content?: {
+            type: "TEXT" | "TRANSCRIPTION";
+            text: string;
+            transcription?: z.objectInputType<{}, z.ZodTypeAny, "passthrough"> | undefined;
+        } | undefined;
+        createdAt?: string | undefined;
+        updatedAt?: string | undefined;
+        profileId?: string | undefined;
+        addresses?: {
+            address: string;
+            channel: string;
+            channelId?: string | undefined;
+        }[] | undefined;
+        serviceId?: string | undefined;
+        participantType?: string | undefined;
+    };
+    timestamp?: string | undefined;
+}>]>;
+type ConversationsWebhookPayload = z.infer<typeof ConversationsWebhookPayloadSchema>;
 
 /**
  * ConversationRelay API Types
@@ -1893,12 +3378,23 @@ type OpenAITool = z.infer<typeof OpenAIToolSchema>;
 /**
  * Tool execution context
  */
-interface ToolContext {
-    conversationId?: string;
-    profileId?: string;
-    channel?: string;
-    metadata?: Record<string, unknown>;
-}
+declare const ToolContextSchema: z.ZodObject<{
+    conversationId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodString>;
+    channel: z.ZodOptional<z.ZodString>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    channel?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    conversationId?: string | undefined;
+    profileId?: string | undefined;
+}, {
+    channel?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+    conversationId?: string | undefined;
+    profileId?: string | undefined;
+}>;
+type ToolContext = z.infer<typeof ToolContextSchema>;
 /**
  * Tool execution result
  */
@@ -2257,13 +3753,13 @@ declare const OperatorProcessingResultSchema: z.ZodObject<{
     success: boolean;
     skipped: boolean;
     createdCount: number;
-    error?: string | undefined;
     eventType?: string | undefined;
+    error?: string | undefined;
     skipReason?: string | undefined;
 }, {
     success: boolean;
-    error?: string | undefined;
     eventType?: string | undefined;
+    error?: string | undefined;
     skipped?: boolean | undefined;
     skipReason?: string | undefined;
     createdCount?: number | undefined;
@@ -2323,7 +3819,7 @@ type TACDeliveryStatus = z.infer<typeof TACDeliveryStatusSchema>;
 declare const TACParticipantTypeSchema: z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>;
 type TACParticipantType = z.infer<typeof TACParticipantTypeSchema>;
 /**
- * Unified author model with all fields from both Memory and Maestro APIs.
+ * Unified author model with all fields from both Memory and Conversations API.
  *
  * Fields not available from a particular API will be undefined.
  */
@@ -2357,7 +3853,7 @@ declare const TACCommunicationAuthorSchema: z.ZodObject<{
 }>;
 type TACCommunicationAuthor = z.infer<typeof TACCommunicationAuthorSchema>;
 /**
- * Unified content model with all fields from both Memory and Maestro APIs.
+ * Unified content model with all fields from both Memory and Conversations API.
  */
 declare const TACCommunicationContentSchema: z.ZodObject<{
     type: z.ZodOptional<z.ZodEnum<["TEXT", "TRANSCRIPTION"]>>;
@@ -2427,7 +3923,7 @@ declare const TACCommunicationContentSchema: z.ZodObject<{
 }>;
 type TACCommunicationContent = z.infer<typeof TACCommunicationContentSchema>;
 /**
- * Unified communication model with all fields from both Memory and Maestro APIs.
+ * Unified communication model with all fields from both Memory and Conversations API.
  *
  * Provides complete access to all communication fields regardless of the source.
  * Fields not available from a particular API will be undefined.
@@ -2663,7 +4159,7 @@ declare const KnowledgeBaseSchema: z.ZodObject<{
     updatedAt: z.ZodString;
     version: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
-    status: "FAILED" | "QUEUED" | "PROVISIONING" | "ACTIVE" | "DELETING";
+    status: "FAILED" | "ACTIVE" | "QUEUED" | "PROVISIONING" | "DELETING";
     id: string;
     createdAt: string;
     updatedAt: string;
@@ -2671,7 +4167,7 @@ declare const KnowledgeBaseSchema: z.ZodObject<{
     displayName: string;
     version: number;
 }, {
-    status: "FAILED" | "QUEUED" | "PROVISIONING" | "ACTIVE" | "DELETING";
+    status: "FAILED" | "ACTIVE" | "QUEUED" | "PROVISIONING" | "DELETING";
     id: string;
     createdAt: string;
     updatedAt: string;
@@ -2741,42 +4237,42 @@ type KnowledgeSearchResponse = z.infer<typeof KnowledgeSearchResponseSchema>;
  * Unified response wrapper for TAC.retrieveMemory().
  *
  * Provides a consistent interface for accessing memory data regardless of whether
- * Memory API is configured or falling back to Maestro Communications API.
+ * Memory API is configured or falling back to Conversations API.
  *
  * Memory configured:
  * - observations, summaries, communications all populated
  * - communications include Memory-specific fields (author id, name, type, profile_id)
  *
- * Maestro fallback:
+ * Conversations API fallback:
  * - observations and summaries are empty arrays
- * - communications include Maestro-specific fields (conversation_id, account_id, etc.)
+ * - communications include Conversations API-specific fields (conversation_id, account_id, etc.)
  */
 declare class TACMemoryResponse {
     private readonly _data;
     private readonly _communications;
     /**
-     * Initialize wrapper with either Memory or Maestro data.
+     * Initialize wrapper with either Memory or Conversations API data.
      *
-     * @param data - Either MemoryRetrievalResponse (Memory) or Communication[] (Maestro)
+     * @param data - Either MemoryRetrievalResponse (Memory) or Communication[] (Conversations API)
      */
     constructor(data: MemoryRetrievalResponse | Communication[]);
     /**
      * Get observation memories.
      *
-     * @returns List of observations if Memory is configured, empty array for Maestro fallback
+     * @returns List of observations if Memory is configured, empty array for Conversations API fallback
      */
     get observations(): ObservationInfo[];
     /**
      * Get summary memories.
      *
-     * @returns List of summaries if Memory is configured, empty array for Maestro fallback
+     * @returns List of summaries if Memory is configured, empty array for Conversations API fallback
      */
     get summaries(): SummaryInfo[];
     /**
      * Get communications in unified format with all available fields.
      *
      * Communications are converted to a common format during initialization that includes
-     * all fields from both Memory and Maestro APIs. Fields not available from a particular
+     * all fields from both Memory and Conversations API. Fields not available from a particular
      * API will be undefined.
      *
      * @returns List of unified communications with all available fields
@@ -2786,7 +4282,7 @@ declare class TACMemoryResponse {
      * Check if Memory API is configured and providing full features.
      *
      * @returns true if Memory is configured (observations/summaries available),
-     *          false if using Maestro fallback (only communications available)
+     *          false if using Conversations API fallback (only communications available)
      */
     get hasMemoryFeatures(): boolean;
     /**
@@ -3122,6 +4618,52 @@ declare abstract class BaseChannel {
      */
     abstract processWebhook(payload: unknown): Promise<void>;
     /**
+     * Process Conversations webhook
+     * This is the default implementation that handles standard Conversations events.
+     * Channels can override to add channel-specific behavior.
+     */
+    processConversationsWebhook(payload: unknown): Promise<void>;
+    /**
+     * Validate Conversations webhook payload structure using Zod schema
+     * Returns parse result with success flag and either data or error details
+     */
+    protected validateConversationsWebhookPayload(payload: unknown): {
+        success: true;
+        data: ConversationsWebhookPayload;
+    } | {
+        success: false;
+        error: z.ZodError;
+    };
+    /**
+     * Handle CONVERSATION_CREATED event
+     */
+    protected handleConversationCreated(payload: ConversationWebhookPayload): void;
+    /**
+     * Handle PARTICIPANT_ADDED event
+     */
+    protected handleParticipantAdded(payload: ParticipantWebhookPayload): void;
+    /**
+     * Handle PARTICIPANT_UPDATED event
+     */
+    protected handleParticipantUpdated(payload: ParticipantWebhookPayload): void;
+    /**
+     * Handle PARTICIPANT_REMOVED event
+     */
+    protected handleParticipantRemoved(payload: ParticipantWebhookPayload): void;
+    /**
+     * Handle COMMUNICATION_CREATED event
+     * Override in channel-specific classes to add message handling logic
+     */
+    protected handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void>;
+    /**
+     * Handle COMMUNICATION_UPDATED event
+     */
+    protected handleCommunicationUpdated(payload: CommunicationWebhookPayload): Promise<void>;
+    /**
+     * Handle CONVERSATION_UPDATED event
+     */
+    protected handleConversationUpdated(payload: ConversationWebhookPayload): Promise<void>;
+    /**
      * Send a response back to the user (implemented by subclasses)
      */
     abstract sendResponse(conversationId: ConversationId, message: string, metadata?: Record<string, unknown>): Promise<void>;
@@ -3154,13 +4696,13 @@ declare abstract class BaseChannel {
      */
     protected validateWebhookPayload(payload: unknown): boolean;
     /**
-     * Extract conversation ID from webhook payload (implemented by subclasses)
+     * Extract conversation ID from Conversations webhook payload
      */
-    protected abstract extractConversationId(payload: unknown): ConversationId | null;
+    protected extractConversationId(payload: unknown): ConversationId | null;
     /**
-     * Extract profile ID from webhook payload (implemented by subclasses)
+     * Extract profile ID from Conversations webhook payload
      */
-    protected abstract extractProfileId(payload: unknown): ProfileId | null;
+    protected extractProfileId(payload: unknown): ProfileId | null;
     /**
      * Cleanup resources when shutting down
      */
@@ -3263,6 +4805,10 @@ declare class TAC {
      */
     getChannel<T extends BaseChannel>(channelType: ChannelType): T | undefined;
     /**
+     * Get all registered channels
+     */
+    getChannels(): BaseChannel[];
+    /**
      * Get configuration
      */
     getConfig(): TACConfig;
@@ -3363,42 +4909,19 @@ declare class SMSChannel extends BaseChannel {
      */
     on(event: string, callback: (...args: any[]) => void): void;
     /**
-     * Process SMS webhook from Twilio Conversations Service
+     * Process SMS webhook - delegates to Conversations webhook handler
      */
     processWebhook(payload: unknown): Promise<void>;
     /**
-     * Handle conversation creation event
+     * Handle COMMUNICATION_CREATED with SMS-specific logic
+     * Override from base class to add message processing
      */
-    private handleConversationCreated;
-    /**
-     * Handle participant added event
-     */
-    private handleParticipantAdded;
-    /**
-     * Handle new communication event (incoming message)
-     */
-    private handleCommunicationCreated;
-    /**
-     * Handle conversation updated event
-     */
-    private handleConversationUpdated;
+    protected handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void>;
     /**
      * Send SMS response using Twilio Messages API
      * Note: This is a workaround until Conversations Service supports sending messages
      */
     sendResponse(conversationId: ConversationId, message: string, metadata?: Record<string, unknown>): Promise<void>;
-    /**
-     * Extract conversation ID from webhook payload
-     */
-    protected extractConversationId(payload: unknown): ConversationId | null;
-    /**
-     * Extract profile ID from webhook payload
-     */
-    protected extractProfileId(payload: unknown): ProfileId | null;
-    /**
-     * Validate SMS webhook payload structure
-     */
-    protected validateWebhookPayload(payload: unknown): boolean;
 }
 
 /**
@@ -3447,10 +4970,10 @@ declare class VoiceChannel extends BaseChannel {
      */
     on(event: string, callback: (...args: any[]) => void): void;
     /**
-     * Process webhook - Voice channel doesn't use traditional webhooks,
-     * but this method is required by the base class
+     * Process Voice webhook - delegates to Conversations webhook handler
+     * Voice receives Conversations events for conversation lifecycle
      */
-    processWebhook(_payload: unknown): Promise<void>;
+    processWebhook(payload: unknown): Promise<void>;
     /**
      * Get active WebSocket connection for a conversation
      */
@@ -3553,14 +5076,6 @@ declare class VoiceChannel extends BaseChannel {
      * Keeps null, false, 0, and empty strings as they are valid values.
      */
     private filterUnsetValues;
-    /**
-     * Extract conversation ID - Not applicable for Voice channel
-     */
-    protected extractConversationId(_payload: unknown): ConversationId | null;
-    /**
-     * Extract profile ID - Not applicable for Voice channel
-     */
-    protected extractProfileId(_payload: unknown): ProfileId | null;
     /**
      * Cleanup channel state on shutdown
      *
@@ -3802,11 +5317,10 @@ interface TACServerConfig {
     voice?: Partial<VoiceServerConfig>;
     /** Custom webhook paths */
     webhookPaths?: {
-        sms?: string;
         twiml?: string;
         ws?: string;
+        conversation?: string;
         conversationRelayCallback?: string;
-        /** Path for Conversation Intelligence webhook (optional - only registered if provided) */
         cintel?: string;
     };
     /** ConversationRelay configuration (welcomeGreeting, transcription, TTS, interaction settings, etc.) */
@@ -3839,6 +5353,12 @@ declare class TACServer {
      */
     private registerWebhookValidation;
     /**
+     * Extract channel string from webhook payload data
+     * Checks author.channel first (COMMUNICATION events),
+     * then addresses[0].channel (PARTICIPANT events)
+     */
+    private extractChannelFromWebhook;
+    /**
      * Setup routes
      */
     private setupRoutes;
@@ -3856,4 +5376,4 @@ declare class TACServer {
     stop(): Promise<void>;
 }
 
-export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
