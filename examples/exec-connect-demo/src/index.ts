@@ -435,19 +435,41 @@ async function main(): Promise<void> {
       return Promise.resolve(result.content);
     };
 
-    // Create and start server
-    const server = new TACServer(tac, {
-      development: true,
-      voice: {
-        port: Number(process.env.PORT) || 8000,
-      },
-      conversationRelayConfig: {
-        welcomeGreeting: 'Hello! Thank you for calling Owl Internet. How can I help you today?',
-      },
-      handoffHandler,
-    });
+    // Create and start server with automatic port retry
+    let port = Number(process.env.PORT) || 8000;
+    let server: TACServer | null = null;
+    const maxRetries = 5;
 
-    await server.start();
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        server = new TACServer(tac, {
+          development: true,
+          voice: {
+            port,
+          },
+          conversationRelayConfig: {
+            welcomeGreeting: 'Hello! Thank you for calling Owl Internet. How can I help you today?',
+          },
+          handoffHandler,
+        });
+
+        await server.start();
+        console.log(`✅ Server started on port ${port}`);
+        break; // Success!
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'EADDRINUSE') {
+          console.log(`⚠️  Port ${port} is in use, trying ${port + 1}...`);
+          port++;
+          server = null;
+        } else {
+          throw error; // Re-throw non-port-related errors
+        }
+      }
+    }
+
+    if (!server) {
+      throw new Error(`Failed to start server after ${maxRetries} attempts`);
+    }
 
     // Start dashboard server
     await startDashboardServer();
