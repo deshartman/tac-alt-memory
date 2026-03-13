@@ -70,9 +70,12 @@ const DEFAULT_CONFIG = {
     conversation: '/conversation',
     conversationRelayCallback: '/conversation-relay-callback',
   },
+  conversationRelayConfig: {
+    welcomeGreeting: 'Hello! How can I assist you today?',
+  },
   development: false,
   validateWebhooks: true,
-} satisfies Omit<TACServerConfig, 'fastify' | 'conversationRelayConfig' | 'handoffHandler'>;
+} satisfies Omit<TACServerConfig, 'fastify' | 'handoffHandler'>;
 
 /**
  * Batteries-included Fastify server for TAC
@@ -83,16 +86,26 @@ const DEFAULT_CONFIG = {
 export class TACServer {
   private readonly fastify: FastifyInstance;
   private readonly tac: TAC;
-  private readonly config: Required<
-    Omit<TACServerConfig, 'fastify' | 'conversationRelayConfig' | 'handoffHandler'>
-  > & {
-    conversationRelayConfig?: Partial<Omit<ConversationRelayConfig, 'url'>>;
+  private readonly config: Required<Omit<TACServerConfig, 'fastify' | 'handoffHandler'>> & {
     handoffHandler?: (payload: ConversationRelayCallbackPayload) => Promise<string>;
   };
 
   constructor(tac: TAC, config: TACServerConfig = {}) {
     this.tac = tac;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      // Deep merge webhookPaths to preserve defaults while allowing overrides
+      webhookPaths: {
+        ...DEFAULT_CONFIG.webhookPaths,
+        ...config.webhookPaths,
+      },
+      // Deep merge conversationRelayConfig to preserve defaults while allowing overrides
+      conversationRelayConfig: {
+        ...DEFAULT_CONFIG.conversationRelayConfig,
+        ...config.conversationRelayConfig,
+      },
+    };
 
     // Initialize Fastify with Pino logger
     this.fastify = Fastify({
