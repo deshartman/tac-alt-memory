@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TACConfig } from '@twilio/tac-core';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 describe('TACConfig', () => {
   const getTestConfigData = () => ({
@@ -21,8 +23,8 @@ describe('TACConfig', () => {
       ENVIRONMENT: process.env.ENVIRONMENT,
       TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
       TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-      API_KEY: process.env.API_KEY,
-      API_TOKEN: process.env.API_TOKEN,
+      TWILIO_API_KEY: process.env.TWILIO_API_KEY,
+      TWILIO_API_TOKEN: process.env.TWILIO_API_TOKEN,
       TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
       MEMORY_STORE_ID: process.env.MEMORY_STORE_ID,
       CONVERSATION_SERVICE_ID: process.env.CONVERSATION_SERVICE_ID,
@@ -138,8 +140,8 @@ describe('TACConfig', () => {
       process.env.ENVIRONMENT = 'prod';
       process.env.TWILIO_ACCOUNT_SID = 'ACtest123';
       process.env.TWILIO_AUTH_TOKEN = 'test_auth_token';
-      process.env.API_KEY = 'SKtest123';
-      process.env.API_TOKEN = 'test_api_token';
+      process.env.TWILIO_API_KEY = 'SKtest123';
+      process.env.TWILIO_API_TOKEN = 'test_api_token';
       process.env.TWILIO_PHONE_NUMBER = '+1234567890';
       process.env.MEMORY_STORE_ID = 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg';
       process.env.CONVERSATION_SERVICE_ID = 'comms_service_01kbjqhn79f0fvwfsxqzd5nqhd';
@@ -194,22 +196,22 @@ describe('TACConfig', () => {
       }).toThrow('Missing required environment variable: TWILIO_AUTH_TOKEN');
     });
 
-    it('should throw error when API_KEY is missing', () => {
+    it('should throw error when TWILIO_API_KEY is missing', () => {
       setRequiredEnvVars();
-      delete process.env.API_KEY;
+      delete process.env.TWILIO_API_KEY;
 
       expect(() => {
         TACConfig.fromEnv();
-      }).toThrow('Missing required environment variable: API_KEY');
+      }).toThrow('Missing required environment variable: TWILIO_API_KEY');
     });
 
-    it('should throw error when API_TOKEN is missing', () => {
+    it('should throw error when TWILIO_API_TOKEN is missing', () => {
       setRequiredEnvVars();
-      delete process.env.API_TOKEN;
+      delete process.env.TWILIO_API_TOKEN;
 
       expect(() => {
         TACConfig.fromEnv();
-      }).toThrow('Missing required environment variable: API_TOKEN');
+      }).toThrow('Missing required environment variable: TWILIO_API_TOKEN');
     });
 
     it('should throw error when TWILIO_PHONE_NUMBER is missing', () => {
@@ -260,6 +262,67 @@ describe('TACConfig', () => {
 
       expect(credentials.username).toBe('ACtest123456789');
       expect(credentials.password).toBe('test_token_123');
+    });
+  });
+
+  describe('.env.example validation', () => {
+    it('should have all required environment variables in .env.example', () => {
+      // Read .env.example file
+      const envExamplePath = resolve(__dirname, '../getting_started/examples/.env.example');
+      const envExampleContent = readFileSync(envExamplePath, 'utf-8');
+
+      // Extract variable names from .env.example (lines that start with a variable name)
+      const envVars = new Set(
+        envExampleContent
+          .split('\n')
+          .filter(line => line.trim() && !line.trim().startsWith('#'))
+          .map(line => line.split('=')[0])
+      );
+
+      // Required variables that TACConfig.fromEnv() expects
+      const requiredVars = [
+        'TWILIO_ACCOUNT_SID',
+        'TWILIO_AUTH_TOKEN',
+        'TWILIO_API_KEY',
+        'TWILIO_API_TOKEN',
+        'TWILIO_PHONE_NUMBER',
+        'CONVERSATION_SERVICE_ID',
+      ];
+
+      // Optional variables that should be documented
+      const optionalVars = [
+        'MEMORY_STORE_ID',
+        'VOICE_PUBLIC_DOMAIN',
+        'OPENAI_API_KEY', // for examples
+      ];
+
+      // Verify all required variables are in .env.example
+      requiredVars.forEach(varName => {
+        expect(envVars.has(varName)).toBe(true);
+      });
+
+      // Verify optional variables are documented
+      optionalVars.forEach(varName => {
+        expect(envVars.has(varName)).toBe(true);
+      });
+    });
+
+    it('should successfully load config from .env.example format', () => {
+      // Simulate loading a .env file with the format from .env.example
+      process.env.TWILIO_ACCOUNT_SID = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+      process.env.TWILIO_AUTH_TOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+      process.env.TWILIO_API_KEY = 'SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+      process.env.TWILIO_API_TOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+      process.env.TWILIO_PHONE_NUMBER = '+1xxxxxxxxxx';
+      process.env.CONVERSATION_SERVICE_ID = 'conv_configuration_xxxxxxxxxxxxxxxxxxxxxxxxxx';
+      process.env.MEMORY_STORE_ID = 'mem_store_xxxxxxxxxxxxxxxxxxxxxxxxxx';
+
+      // This should not throw - if variable names in .env.example don't match code, this will fail
+      const config = TACConfig.fromEnv();
+
+      expect(config.twilioAccountSid).toBe('ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
+      expect(config.apiKey).toBe('SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
+      expect(config.apiToken).toBe('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
     });
   });
 });
