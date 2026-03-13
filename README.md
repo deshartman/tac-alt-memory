@@ -129,7 +129,7 @@ await server.start();
 > **Note**: See the [getting started guide](getting_started/README.md) for complete setup instructions and `.env` configuration details.
 
 **That's it!** The server automatically:
-- Creates Fastify app with `/twiml`, `/ws`, and `/webhook` endpoints
+- Creates Fastify app with `/twiml`, `/ws`, and `/conversation` endpoints
 - Handles both Voice and SMS conversations
 - Provides conversation memory and user profile in the callback
 - Routes responses through the appropriate channel
