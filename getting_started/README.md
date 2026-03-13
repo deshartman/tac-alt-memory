@@ -110,4 +110,4 @@ See [`examples/.env.example`](examples/.env.example) for all available configura
 - Customize the agent's behavior by modifying the message handler in `examples/openai/src/index.ts`
 - Add tool calling to enable agent actions beyond text responses
 - Explore the main [README](../README.md) for advanced features
-- Review [.claude/CLAUDE.md](../.claude/CLAUDE.md) for architecture and development guidelines
+- Review [CLAUDE.md](../CLAUDE.md) for architecture and development guidelines
