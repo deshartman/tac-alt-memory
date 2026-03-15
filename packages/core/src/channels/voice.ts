@@ -225,6 +225,28 @@ export class VoiceChannel extends BaseChannel {
       address: from,
     };
 
+    // Profile service integration for identity resolution and tracking
+    // Note: Voice setup is always fire-and-forget to avoid blocking WebSocket
+    const profileService = this.tac.getProfileService();
+    if (profileService) {
+      const phone = from; // Phone number from caller
+
+      // Fire-and-forget for both Segment and Memora
+      profileService.identify(phone).catch((err: Error) => {
+        this.logger.warn({ err, phone }, 'Profile identify failed (non-blocking)');
+      });
+
+      // Track call started event (Segment only, no-op for Memora)
+      profileService
+        .track(phone, 'call_started', { conversation_id: conversationId, call_sid: callSid })
+        .catch((err: Error) => {
+          this.logger.warn(
+            { err, phone, event: 'call_started' },
+            'Profile track failed (non-blocking)'
+          );
+        });
+    }
+
     // Invoke setup callback
     if (this.voiceCallbacks.onSetup) {
       this.voiceCallbacks.onSetup({

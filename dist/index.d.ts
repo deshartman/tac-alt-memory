@@ -1,6 +1,6 @@
 import { z } from 'zod';
 export { z } from 'zod';
-import pino from 'pino';
+import pino, { Logger as Logger$1 } from 'pino';
 import { WebSocket } from 'ws';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 import { FastifyServerOptions } from 'fastify';
@@ -16,6 +16,11 @@ type Environment = z.infer<typeof EnvironmentSchema>;
 declare const ChannelTypeSchema: z.ZodEnum<["sms", "voice"]>;
 type ChannelType = z.infer<typeof ChannelTypeSchema>;
 /**
+ * Profile service provider types
+ */
+declare const ProfileServiceProviderSchema: z.ZodEnum<["segment", "memora"]>;
+type ProfileServiceProvider = z.infer<typeof ProfileServiceProviderSchema>;
+/**
  * TAC Configuration schema with environment-aware URL computation
  */
 declare const TACConfigSchema: z.ZodObject<{
@@ -25,6 +30,11 @@ declare const TACConfigSchema: z.ZodObject<{
     apiKey: z.ZodString;
     apiToken: z.ZodString;
     twilioPhoneNumber: z.ZodString;
+    profileServiceProvider: z.ZodOptional<z.ZodEnum<["segment", "memora"]>>;
+    segmentWriteKey: z.ZodOptional<z.ZodString>;
+    segmentSpaceId: z.ZodOptional<z.ZodString>;
+    segmentAccessToken: z.ZodOptional<z.ZodString>;
+    segmentUnifyToken: z.ZodOptional<z.ZodString>;
     memoryStoreId: z.ZodOptional<z.ZodString>;
     traitGroups: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     conversationServiceId: z.ZodString;
@@ -40,6 +50,11 @@ declare const TACConfigSchema: z.ZodObject<{
     apiToken: string;
     twilioPhoneNumber: string;
     conversationServiceId: string;
+    profileServiceProvider?: "segment" | "memora" | undefined;
+    segmentWriteKey?: string | undefined;
+    segmentSpaceId?: string | undefined;
+    segmentAccessToken?: string | undefined;
+    segmentUnifyToken?: string | undefined;
     memoryStoreId?: string | undefined;
     traitGroups?: string[] | undefined;
     voicePublicDomain?: string | undefined;
@@ -54,6 +69,11 @@ declare const TACConfigSchema: z.ZodObject<{
     twilioPhoneNumber: string;
     conversationServiceId: string;
     environment?: "dev" | "stage" | "prod" | undefined;
+    profileServiceProvider?: "segment" | "memora" | undefined;
+    segmentWriteKey?: string | undefined;
+    segmentSpaceId?: string | undefined;
+    segmentAccessToken?: string | undefined;
+    segmentUnifyToken?: string | undefined;
     memoryStoreId?: string | undefined;
     traitGroups?: string[] | undefined;
     voicePublicDomain?: string | undefined;
@@ -96,6 +116,11 @@ declare const EnvironmentVariables: {
     readonly TWILIO_API_KEY: "TWILIO_API_KEY";
     readonly TWILIO_API_TOKEN: "TWILIO_API_TOKEN";
     readonly TWILIO_PHONE_NUMBER: "TWILIO_PHONE_NUMBER";
+    readonly PROFILE_SERVICE_PROVIDER: "PROFILE_SERVICE_PROVIDER";
+    readonly SEGMENT_WRITE_KEY: "SEGMENT_WRITE_KEY";
+    readonly SEGMENT_SPACE_ID: "SEGMENT_SPACE_ID";
+    readonly SEGMENT_ACCESS_TOKEN: "SEGMENT_ACCESS_TOKEN";
+    readonly SEGMENT_UNIFY_TOKEN: "SEGMENT_UNIFY_TOKEN";
     readonly MEMORY_STORE_ID: "MEMORY_STORE_ID";
     readonly TRAIT_GROUPS: "TRAIT_GROUPS";
     readonly CONVERSATION_SERVICE_ID: "CONVERSATION_SERVICE_ID";
@@ -1502,7 +1527,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
     name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     serviceId: z.ZodOptional<z.ZodString>;
-    profileId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     participantType: z.ZodOptional<z.ZodString>;
     author: z.ZodOptional<z.ZodObject<{
         address: z.ZodString;
@@ -1551,7 +1576,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
     conversationId?: string | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }, {
@@ -1573,7 +1598,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
     conversationId?: string | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }>, {
@@ -1595,7 +1620,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     } | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }, {
@@ -1617,7 +1642,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
     conversationId?: string | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }>;
@@ -1633,7 +1658,7 @@ declare const ConversationsParticipantDataSchema: z.ZodObject<{
     name: z.ZodString;
     type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
     participantType: z.ZodOptional<z.ZodString>;
-    profileId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     serviceId: z.ZodOptional<z.ZodString>;
     addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
         channel: z.ZodString;
@@ -1696,7 +1721,7 @@ declare const ConversationsParticipantDataSchema: z.ZodObject<{
     } | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     addresses?: {
         address: string;
         channel: string;
@@ -1723,7 +1748,7 @@ declare const ConversationsParticipantDataSchema: z.ZodObject<{
     } | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     addresses?: {
         address: string;
         channel: string;
@@ -1925,7 +1950,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         author: z.ZodOptional<z.ZodObject<{
             address: z.ZodString;
@@ -1974,7 +1999,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -1996,7 +2021,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>, {
@@ -2018,7 +2043,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2040,7 +2065,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -2065,7 +2090,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2091,7 +2116,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2111,7 +2136,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         name: z.ZodString;
         type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
         participantType: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
         addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
             channel: z.ZodString;
@@ -2174,7 +2199,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2201,7 +2226,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2231,7 +2256,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2262,7 +2287,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2469,7 +2494,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         author: z.ZodOptional<z.ZodObject<{
             address: z.ZodString;
@@ -2518,7 +2543,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2540,7 +2565,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>, {
@@ -2562,7 +2587,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2584,7 +2609,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -2609,7 +2634,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2635,7 +2660,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2650,7 +2675,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         name: z.ZodString;
         type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
         participantType: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
         addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
             channel: z.ZodString;
@@ -2713,7 +2738,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2740,7 +2765,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2770,7 +2795,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2801,7 +2826,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -4319,6 +4344,11 @@ declare class TACConfig {
     readonly apiKey: string;
     readonly apiToken: string;
     readonly twilioPhoneNumber: string;
+    readonly profileServiceProvider?: ProfileServiceProvider;
+    readonly segmentWriteKey?: string;
+    readonly segmentSpaceId?: string;
+    readonly segmentAccessToken?: string;
+    readonly segmentUnifyToken?: string;
     readonly memoryStoreId?: string;
     readonly traitGroups?: string[];
     readonly conversationServiceId: string;
@@ -4709,6 +4739,59 @@ declare abstract class BaseChannel {
     shutdown(): void;
 }
 
+/**
+ * ProfileService - Abstract interface for customer identity and profile management
+ *
+ * Provides a unified interface for different profile storage backends (Segment, Memora).
+ * Implementations handle identity resolution, profile trait management, and event tracking.
+ */
+/**
+ * Generic profile service interface supporting both blocking (Memora) and non-blocking (Segment) implementations
+ */
+interface ProfileService {
+    /**
+     * Resolve phone number to user identity
+     * - Segment: Non-blocking, fire-and-forget identity tracking
+     * - Memora: Blocking, retrieves profile_id for later use
+     *
+     * @param phone - Phone number in E.164 format (e.g., "+61412345678")
+     */
+    identify(phone: string): Promise<void>;
+    /**
+     * Track conversation events for analytics
+     * - Segment: Fire-and-forget event tracking
+     * - Memora: No-op (no event tracking capability)
+     *
+     * @param phone - Phone number in E.164 format
+     * @param event - Event name (e.g., "message_received", "handoff_requested")
+     * @param properties - Optional event properties
+     */
+    track(phone: string, event: string, properties?: Record<string, unknown>): Promise<void>;
+    /**
+     * Retrieve customer profile traits
+     * Used by LLM tools to fetch customer context on-demand
+     *
+     * @param phone - Phone number in E.164 format
+     * @param fields - Optional array of specific trait fields to retrieve
+     * @returns Profile traits as key-value pairs
+     */
+    getProfile(phone: string, fields?: string[]): Promise<Record<string, unknown>>;
+    /**
+     * Update customer profile traits
+     * Used by LLM tools to persist customer information
+     *
+     * @param phone - Phone number in E.164 format
+     * @param traits - Traits to update (e.g., {name: "John", plan: "premium"})
+     */
+    updateProfile(phone: string, traits: Record<string, unknown>): Promise<void>;
+    /**
+     * Graceful shutdown - flush any pending operations
+     * - Segment: Flush queued events to Segment API
+     * - Memora: No cleanup needed
+     */
+    close(): Promise<void>;
+}
+
 interface TACOptions {
     config?: TACConfig | TACConfigData;
     logger?: Logger;
@@ -4754,6 +4837,7 @@ declare class TAC {
     private readonly conversationClient;
     private readonly channels;
     private readonly cintelProcessor?;
+    private readonly profileService?;
     private messageReadyCallback?;
     private interruptCallback?;
     private handoffCallback?;
@@ -4823,6 +4907,11 @@ declare class TAC {
      */
     getKnowledgeClient(): KnowledgeClient | undefined;
     /**
+     * Get profile service for customer profile and identity operations
+     * Returns undefined if no profile service provider is configured
+     */
+    getProfileService(): ProfileService | undefined;
+    /**
      * Get conversation client for advanced conversation operations
      */
     getConversationClient(): ConversationClient;
@@ -4878,7 +4967,105 @@ declare class TAC {
     /**
      * Shutdown TAC and cleanup resources
      */
-    shutdown(): void;
+    shutdown(): Promise<void>;
+}
+
+/**
+ * Configuration for SegmentProfileService
+ */
+interface SegmentProfileServiceConfig {
+    /** Segment source write key (required for event tracking) */
+    writeKey: string;
+    /** Segment space ID (optional, for Profile API) */
+    spaceId?: string;
+    /** Segment public API token (optional, for Profile API) */
+    accessToken?: string;
+    /** Segment Unify token (optional, for Profile API with Basic Auth) */
+    unifyToken?: string;
+}
+/**
+ * Segment implementation of ProfileService
+ *
+ * - Uses @segment/analytics-node SDK for event tracking (identify, track)
+ * - Uses Segment Profile API v1 for trait management (getProfile, updateProfile)
+ * - All operations are non-blocking (fire-and-forget for identify/track)
+ * - User ID format: phone_+61412345678 (prefixed phone number)
+ */
+declare class SegmentProfileService implements ProfileService {
+    private readonly analytics;
+    private readonly spaceId;
+    private readonly accessToken;
+    private readonly unifyToken;
+    private readonly logger;
+    constructor(config: SegmentProfileServiceConfig, logger: Logger$1);
+    /**
+     * Background identity tracking (fire-and-forget)
+     * Creates/updates user identity in Segment for analytics
+     */
+    identify(phone: string): Promise<void>;
+    /**
+     * Background event tracking (fire-and-forget)
+     * Tracks conversation events for analytics
+     */
+    track(phone: string, event: string, properties?: Record<string, unknown>): Promise<void>;
+    /**
+     * Retrieve customer profile traits from Segment Profile API
+     * Used by LLM tools to fetch customer context on-demand
+     */
+    getProfile(phone: string, fields?: string[]): Promise<Record<string, unknown>>;
+    /**
+     * Update customer profile traits in Segment
+     * Uses Events API (identify) - Profile API is read-only and only supports GET
+     */
+    updateProfile(phone: string, traits: Record<string, unknown>): Promise<void>;
+    /**
+     * Graceful shutdown - flush queued events to Segment
+     */
+    close(): Promise<void>;
+}
+
+/**
+ * Memora implementation of ProfileService
+ *
+ * - Wraps existing MemoryClient for backward compatibility
+ * - Identity resolution is BLOCKING (retrieves profile_id via lookupProfile)
+ * - No event tracking (Memora doesn't support this)
+ * - Profile traits stored in cache after lookup
+ */
+declare class MemoraProfileService implements ProfileService {
+    private readonly memoryClient;
+    private readonly storeId;
+    private readonly logger;
+    /**
+     * Cache mapping phone numbers to profile IDs
+     * Populated during identify() call
+     */
+    private readonly profileCache;
+    constructor(memoryClient: MemoryClient, storeId: string, logger: Logger$1);
+    /**
+     * BLOCKING identity resolution
+     * Looks up profile by phone number and caches profile_id for later use
+     */
+    identify(phone: string): Promise<void>;
+    /**
+     * No-op for Memora (no event tracking capability)
+     */
+    track(phone: string, event: string, _properties?: Record<string, unknown>): Promise<void>;
+    /**
+     * Retrieve customer profile traits from Memora
+     * Used by LLM tools to fetch customer context on-demand
+     */
+    getProfile(phone: string, fields?: string[]): Promise<Record<string, unknown>>;
+    /**
+     * Update customer profile traits
+     * Note: MemoryClient doesn't have updateProfile method - this would need to be added to MemoryClient
+     * For now, throw an error indicating this is not yet implemented
+     */
+    updateProfile(phone: string, traits: Record<string, unknown>): Promise<void>;
+    /**
+     * No cleanup needed for Memora
+     */
+    close(): Promise<void>;
 }
 
 /**
@@ -5376,4 +5563,4 @@ declare class TACServer {
     stop(): Promise<void>;
 }
 
-export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, MemoraProfileService, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type ProfileService, type ProfileServiceProvider, ProfileServiceProviderSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, SegmentProfileService, type SegmentProfileServiceConfig, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };

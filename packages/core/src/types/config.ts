@@ -13,6 +13,12 @@ export const ChannelTypeSchema = z.enum(['sms', 'voice']);
 export type ChannelType = z.infer<typeof ChannelTypeSchema>;
 
 /**
+ * Profile service provider types
+ */
+export const ProfileServiceProviderSchema = z.enum(['segment', 'memora']);
+export type ProfileServiceProvider = z.infer<typeof ProfileServiceProviderSchema>;
+
+/**
  * TAC Configuration schema with environment-aware URL computation
  */
 export const TACConfigSchema = z.object({
@@ -22,11 +28,23 @@ export const TACConfigSchema = z.object({
   apiKey: z.string().min(1, 'API Key is required'),
   apiToken: z.string().min(1, 'API Token is required'),
   twilioPhoneNumber: z.string().min(1, 'Twilio Phone Number is required'),
+
+  // Profile service provider (segment or memora)
+  profileServiceProvider: ProfileServiceProviderSchema.optional(),
+
+  // Segment configuration (for segment profile service)
+  segmentWriteKey: z.string().optional(),
+  segmentSpaceId: z.string().optional(),
+  segmentAccessToken: z.string().optional(),
+  segmentUnifyToken: z.string().optional(),
+
+  // Memora configuration (for memora profile service)
   memoryStoreId: z
     .string()
     .regex(/^mem_(service|store)_[0-9a-z]{26}$/, 'Invalid Memory Store ID format')
     .optional(),
   traitGroups: z.array(z.string()).optional(),
+
   conversationServiceId: z
     .string()
     .regex(
@@ -65,8 +83,20 @@ export const EnvironmentVariables = {
   TWILIO_API_KEY: 'TWILIO_API_KEY',
   TWILIO_API_TOKEN: 'TWILIO_API_TOKEN',
   TWILIO_PHONE_NUMBER: 'TWILIO_PHONE_NUMBER',
+
+  // Profile service configuration
+  PROFILE_SERVICE_PROVIDER: 'PROFILE_SERVICE_PROVIDER',
+
+  // Segment configuration
+  SEGMENT_WRITE_KEY: 'SEGMENT_WRITE_KEY',
+  SEGMENT_SPACE_ID: 'SEGMENT_SPACE_ID',
+  SEGMENT_ACCESS_TOKEN: 'SEGMENT_ACCESS_TOKEN',
+  SEGMENT_UNIFY_TOKEN: 'SEGMENT_UNIFY_TOKEN',
+
+  // Memora configuration
   MEMORY_STORE_ID: 'MEMORY_STORE_ID',
   TRAIT_GROUPS: 'TRAIT_GROUPS',
+
   CONVERSATION_SERVICE_ID: 'CONVERSATION_SERVICE_ID',
   VOICE_PUBLIC_DOMAIN: 'VOICE_PUBLIC_DOMAIN',
   TWILIO_TAC_CI_CONFIGURATION_ID: 'TWILIO_TAC_CI_CONFIGURATION_ID',

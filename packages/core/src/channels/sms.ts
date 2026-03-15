@@ -96,7 +96,37 @@ export class SMSChannel extends BaseChannel {
       };
     }
 
-    // Retrieve user memory
+    // Profile service integration for identity resolution and tracking
+    const profileService = this.tac.getProfileService();
+    if (profileService) {
+      const phone = author; // Phone number from communication
+
+      // Segment mode: non-blocking fire-and-forget
+      // Memora mode: blocking identity resolution
+      if (this.config.profileServiceProvider === 'segment') {
+        // Fire-and-forget - don't await
+        profileService.identify(phone).catch((err: Error) => {
+          this.logger.warn({ err, phone }, 'Profile identify failed (non-blocking)');
+        });
+        profileService
+          .track(phone, 'message_received', { conversation_id: conversationId })
+          .catch((err: Error) => {
+            this.logger.warn(
+              { err, phone, event: 'message_received' },
+              'Profile track failed (non-blocking)'
+            );
+          });
+      } else if (this.config.profileServiceProvider === 'memora') {
+        // Blocking identity resolution for Memora
+        try {
+          await profileService.identify(phone);
+        } catch (error) {
+          this.logger.warn({ err: error, phone }, 'Memora profile identify failed');
+        }
+      }
+    }
+
+    // Retrieve user memory (backward compatibility for existing Memory API usage)
     let userMemory;
     if (session && this.tac.isMemoryEnabled()) {
       try {

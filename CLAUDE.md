@@ -57,6 +57,15 @@ getting_started/  # Example apps (OpenAI integration)
 - **ESLint**: `@typescript-eslint` with type-checking; unused vars prefixed `_` are allowed; explicit return types warned
 - **Naming**: PascalCase classes, camelCase functions/variables
 - **Logging**: Pino with hierarchical child loggers tagged by component
+- **Unused parameters**: Prefix with `_` to indicate intentionally unused parameters that must remain for API compatibility
+  ```typescript
+  // Example: Parameter required by interface but not used in this implementation
+  async processMessage(
+    userMessage: string,
+    _memoryResponse: TACMemoryResponse | null,  // Not used - memory retrieved via tools
+    context: ConversationSession
+  ): Promise<string> { ... }
+  ```
 
 ## Key Architecture
 

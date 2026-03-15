@@ -15,6 +15,12 @@ import { KnowledgeClient } from '../clients/knowledge';
 import { BaseChannel } from '../channels/base';
 import { Logger, createLogger } from './logger';
 import { OperatorResultProcessor } from './operator-result-processor';
+import type { ProfileService } from '../services/profile-service';
+import {
+  SegmentProfileService,
+  type SegmentProfileServiceConfig,
+} from '../services/segment-profile-service';
+import { MemoraProfileService } from '../services/memora-profile-service';
 
 export interface TACOptions {
   config?: TACConfig | TACConfigData;
@@ -66,6 +72,7 @@ export class TAC {
   private readonly conversationClient: ConversationClient;
   private readonly channels: Map<ChannelType, BaseChannel>;
   private readonly cintelProcessor?: OperatorResultProcessor;
+  private readonly profileService?: ProfileService;
 
   // Callback registrations
   private messageReadyCallback?: MessageReadyCallback;
@@ -90,11 +97,11 @@ export class TAC {
 
     this.channels = new Map();
 
-    // Initialize Memory client only if memoryStoreId is provided
-    // API credentials are always available (required at TACConfig level)
-    if (this.config.memoryStoreId) {
+    // Initialize Memory client ONLY if using Memora as profile provider
+    // Segment mode should NOT create a MemoryClient even if MEMORY_STORE_ID exists
+    if (this.config.profileServiceProvider === 'memora' && this.config.memoryStoreId) {
       this.memoryClient = new MemoryClient(this.config, this.logger.child({ component: 'memory' }));
-      this.logger.info('Memory client initialized');
+      this.logger.info('Memora Memory client initialized');
 
       // Initialize Knowledge client (uses same API credentials)
       this.knowledgeClient = new KnowledgeClient(
@@ -102,8 +109,52 @@ export class TAC {
         this.logger.child({ component: 'knowledge' })
       );
       this.logger.info('Knowledge client initialized');
+    } else if (this.config.memoryStoreId) {
+      this.logger.info(
+        'Memory credentials provided but PROFILE_SERVICE_PROVIDER is not "memora". ' +
+          'Memory client not initialized (use PROFILE_SERVICE_PROVIDER=memora to enable)'
+      );
     } else {
       this.logger.info('Memory and Knowledge clients not initialized (credentials not provided)');
+    }
+
+    // Initialize ProfileService based on configuration
+    if (this.config.profileServiceProvider === 'segment') {
+      if (!this.config.segmentWriteKey) {
+        throw new Error('SEGMENT_WRITE_KEY is required when PROFILE_SERVICE_PROVIDER=segment');
+      }
+      const segmentConfig: SegmentProfileServiceConfig = {
+        writeKey: this.config.segmentWriteKey,
+      };
+      if (this.config.segmentSpaceId !== undefined) {
+        segmentConfig.spaceId = this.config.segmentSpaceId;
+      }
+      if (this.config.segmentAccessToken !== undefined) {
+        segmentConfig.accessToken = this.config.segmentAccessToken;
+      }
+      if (this.config.segmentUnifyToken !== undefined) {
+        segmentConfig.unifyToken = this.config.segmentUnifyToken;
+      }
+      this.profileService = new SegmentProfileService(
+        segmentConfig,
+        this.logger.child({ component: 'segment-profile' })
+      );
+      this.logger.info('Segment Profile Service initialized');
+    } else if (this.config.profileServiceProvider === 'memora') {
+      if (!this.memoryClient || !this.config.memoryStoreId) {
+        throw new Error('MEMORY_STORE_ID is required when PROFILE_SERVICE_PROVIDER=memora');
+      }
+      this.profileService = new MemoraProfileService(
+        this.memoryClient,
+        this.config.memoryStoreId,
+        this.logger.child({ component: 'memora-profile' })
+      );
+      this.logger.info('Memora Profile Service initialized');
+    } else if (this.config.profileServiceProvider) {
+      throw new Error(
+        `Invalid PROFILE_SERVICE_PROVIDER: ${String(this.config.profileServiceProvider)}. ` +
+          'Must be "segment" or "memora"'
+      );
     }
 
     // Initialize Conversation Intelligence processor if configured
@@ -461,6 +512,14 @@ export class TAC {
   }
 
   /**
+   * Get profile service for customer profile and identity operations
+   * Returns undefined if no profile service provider is configured
+   */
+  public getProfileService(): ProfileService | undefined {
+    return this.profileService;
+  }
+
+  /**
    * Get conversation client for advanced conversation operations
    */
   public getConversationClient(): ConversationClient {
@@ -646,10 +705,15 @@ export class TAC {
   /**
    * Shutdown TAC and cleanup resources
    */
-  public shutdown(): void {
+  public async shutdown(): Promise<void> {
     for (const channel of this.channels.values()) {
       this.logger.debug({ channel: channel.channelType }, 'Shutting down channel');
       channel.shutdown();
+    }
+
+    // Close profile service to flush any queued events
+    if (this.profileService) {
+      await this.profileService.close();
     }
 
     this.channels.clear();

@@ -18,13 +18,13 @@ import { config } from 'dotenv';
 import {
   TAC,
   TACConfig,
+  TACServer,
   SMSChannel,
   VoiceChannel,
   ConversationId,
   handleFlexHandoffLogic,
   ConversationRelayCallbackPayload,
-} from '@twilio/tac-core';
-import { TACServer } from '@twilio/tac-server';
+} from 'twilio-agent-connect';
 import { LLMService } from './llm-service';
 import { dashboardHandler, startDashboardServer } from './dashboard';
 import { MemoryPoller } from './services/memory-poller';
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 
     // Register message ready callback
     tac.onMessageReady(
-      async ({ message: userMessage, session: context, memory: memoryResponse }) => {
+      async ({ message: userMessage, session: context, memory: _memoryResponse }) => {
         // Cast to ConversationId branded type for channel methods
         const convId = context.conversation_id as ConversationId;
 
@@ -102,155 +102,6 @@ async function main(): Promise<void> {
             message: userMessage.substring(0, 100) + (userMessage.length > 100 ? '...' : ''),
           });
 
-          // Voice channel does not retrieve memory, so we need to retrieve it here
-          // SMS channel already retrieves memory before calling this callback
-          let finalMemoryResponse: typeof memoryResponse = memoryResponse;
-          if (!memoryResponse && context.channel === 'voice' && tac.isMemoryEnabled()) {
-            try {
-              // retrieveMemory will do profile lookup based on author_info.address if no profile_id
-              finalMemoryResponse = await tac.retrieveMemory(context, userMessage);
-              console.log('MEMORY | Retrieved context for voice channel');
-              if (context.profile_id) {
-                console.log(`MEMORY | Profile resolved: ${context.profile_id}`);
-              }
-            } catch (error) {
-              console.error('Failed to retrieve memory for voice channel:', error);
-            }
-          }
-
-          // Fetch profile traits (name, etc.) if we have a profile_id
-          if (context.profile_id && tac.isMemoryEnabled() && !context.profile) {
-            try {
-              const profileResponse = await tac.fetchProfile(context.profile_id);
-              if (profileResponse) {
-                // Map ProfileResponse to Profile type
-                context.profile = {
-                  profile_id: profileResponse.id,
-                  traits: profileResponse.traits,
-                };
-                console.log(`PROFILE | Fetched traits for ${context.profile_id}`);
-
-                // Dashboard: agent context update with profile only (before memory)
-                dashboardHandler.pushEvent({
-                  event_type: 'agent_context',
-                  conversation_id: convId,
-                  channel: context.channel,
-                  profile_id: context.profile_id,
-                  message: 'Profile loaded',
-                  metadata: {
-                    profile: {
-                      profile_id: context.profile.profile_id,
-                      identifiers: { phone: context.author_info?.address || '' },
-                      traits: context.profile.traits,
-                    },
-                    observations: [],
-                    summaries: [],
-                    communications: [],
-                  },
-                });
-              }
-            } catch (error) {
-              console.error('Failed to fetch profile:', error);
-            }
-          }
-
-          // Always emit agent_context after memory retrieval (even if empty/failed)
-          const hasMemoryData =
-            finalMemoryResponse &&
-            (finalMemoryResponse.observations.length > 0 ||
-              finalMemoryResponse.summaries.length > 0 ||
-              (finalMemoryResponse.communications?.length || 0) > 0);
-
-          if (hasMemoryData) {
-            // Build memory summary
-            const memoryItems: string[] = [];
-            if (finalMemoryResponse.observations.length > 0) {
-              memoryItems.push(`${finalMemoryResponse.observations.length} observations`);
-            }
-            if (finalMemoryResponse.summaries.length > 0) {
-              memoryItems.push(`${finalMemoryResponse.summaries.length} summaries`);
-            }
-            const memorySummary = memoryItems.join(', ');
-            console.log(`MEMORY | Retrieved ${memorySummary}`);
-
-            // Dashboard: memory event with detailed metadata
-            dashboardHandler.pushEvent({
-              event_type: 'memory',
-              conversation_id: convId,
-              channel: context.channel,
-              ...(context.profile_id && { profile_id: context.profile_id }),
-              message: `Retrieved ${memorySummary}`,
-              metadata: {
-                observations: finalMemoryResponse.observations.map((obs) => ({
-                  id: obs.id,
-                  content: obs.content,
-                  created_at: obs.createdAt,
-                  occurred_at: obs.occurredAt,
-                  source: obs.source,
-                })),
-                summaries: finalMemoryResponse.summaries.map((sum) => ({
-                  id: sum.id,
-                  content: sum.content,
-                  created_at: sum.createdAt,
-                })),
-                communications:
-                  finalMemoryResponse.communications?.map((comm) => ({
-                    id: comm.id,
-                    author_address: comm.author.address,
-                    author_name: comm.author.name,
-                    author_type: comm.author.type,
-                    content: comm.content.text || '',
-                    created_at: comm.created_at,
-                  })) || [],
-                observation_count: finalMemoryResponse.observations.length,
-                summary_count: finalMemoryResponse.summaries.length,
-                communication_count: finalMemoryResponse.communications?.length || 0,
-              },
-            });
-          } else {
-            console.log('MEMORY | No memory data available');
-          }
-
-          // ALWAYS emit agent_context update (moved outside if block)
-          dashboardHandler.pushEvent({
-            event_type: 'agent_context',
-            conversation_id: convId,
-            channel: context.channel,
-            profile_id: context.profile_id,
-            message: hasMemoryData ? 'Agent context updated' : 'Context loaded (empty)',
-            metadata: {
-              profile: context.profile
-                ? {
-                    profile_id: context.profile.profile_id,
-                    identifiers: { phone: context.author_info?.address || '' },
-                    traits: context.profile.traits,
-                  }
-                : undefined,
-              observations:
-                finalMemoryResponse?.observations.map((obs) => ({
-                  id: obs.id,
-                  content: obs.content,
-                  occurred_at: obs.occurredAt,
-                  created_at: obs.createdAt,
-                  source: obs.source,
-                })) || [],
-              summaries:
-                finalMemoryResponse?.summaries.map((sum) => ({
-                  id: sum.id,
-                  content: sum.content,
-                  created_at: sum.createdAt,
-                })) || [],
-              communications:
-                finalMemoryResponse?.communications?.map((comm) => ({
-                  id: comm.id,
-                  author_name: comm.author.name,
-                  author_type: comm.author.type,
-                  content: comm.content.text || '',
-                  created_at: comm.created_at,
-                })) || [],
-            },
-          });
-
           // Start memory polling if enabled and not already running
           if (
             context.profile_id &&
@@ -283,9 +134,10 @@ async function main(): Promise<void> {
             message: 'Processing message...',
           });
 
+          // LLM retrieves memory via tools - don't pre-inject it
           const llmResponse = await llmService.processMessage(
             userMessage,
-            finalMemoryResponse || null,
+            null, // Force LLM to use retrieve_profile/retrieve_memory tools
             context,
             activeWebsocket,
             history
@@ -324,7 +176,7 @@ async function main(): Promise<void> {
                 );
 
                 if (observation && memoryClient) {
-                  const result = await memoryClient.createObservation(
+                  await memoryClient.createObservation(
                     tac.getConfig().memoryStoreId!,
                     context.profile_id,
                     observation,
@@ -333,7 +185,7 @@ async function main(): Promise<void> {
                     new Date().toISOString()
                   );
 
-                  console.log(`OBSERVATION CREATED | ${result.id}: ${observation}`);
+                  console.log(`OBSERVATION CREATED: ${observation}`);
 
                   // Dashboard event
                   dashboardHandler.pushEvent({
@@ -342,7 +194,7 @@ async function main(): Promise<void> {
                     channel: context.channel,
                     profile_id: context.profile_id,
                     message: `Created: ${observation.substring(0, 50)}${observation.length > 50 ? '...' : ''}`,
-                    metadata: { observation_id: result.id },
+                    metadata: { observation: observation },
                   });
                 }
               } catch (error) {

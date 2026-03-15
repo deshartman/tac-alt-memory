@@ -4,6 +4,7 @@ import {
   EnvironmentVariables,
   computeServiceUrls,
   Environment,
+  ProfileServiceProvider,
 } from '../types/index';
 
 /**
@@ -29,8 +30,20 @@ export class TACConfig {
   public readonly apiKey: string;
   public readonly apiToken: string;
   public readonly twilioPhoneNumber: string;
+
+  // Profile service configuration
+  public readonly profileServiceProvider?: ProfileServiceProvider;
+
+  // Segment configuration
+  public readonly segmentWriteKey?: string;
+  public readonly segmentSpaceId?: string;
+  public readonly segmentAccessToken?: string;
+  public readonly segmentUnifyToken?: string;
+
+  // Memora configuration
   public readonly memoryStoreId?: string;
   public readonly traitGroups?: string[];
+
   public readonly conversationServiceId: string;
   public readonly voicePublicDomain?: string;
   public readonly cintelConfigurationId?: string;
@@ -54,12 +67,34 @@ export class TACConfig {
     this.apiKey = validatedConfig.apiKey;
     this.apiToken = validatedConfig.apiToken;
     this.twilioPhoneNumber = validatedConfig.twilioPhoneNumber;
+
+    // Profile service configuration
+    if (validatedConfig.profileServiceProvider) {
+      this.profileServiceProvider = validatedConfig.profileServiceProvider;
+    }
+
+    // Segment configuration
+    if (validatedConfig.segmentWriteKey) {
+      this.segmentWriteKey = validatedConfig.segmentWriteKey;
+    }
+    if (validatedConfig.segmentSpaceId) {
+      this.segmentSpaceId = validatedConfig.segmentSpaceId;
+    }
+    if (validatedConfig.segmentAccessToken) {
+      this.segmentAccessToken = validatedConfig.segmentAccessToken;
+    }
+    if (validatedConfig.segmentUnifyToken) {
+      this.segmentUnifyToken = validatedConfig.segmentUnifyToken;
+    }
+
+    // Memora configuration
     if (validatedConfig.memoryStoreId) {
       this.memoryStoreId = validatedConfig.memoryStoreId;
     }
     if (validatedConfig.traitGroups) {
       this.traitGroups = validatedConfig.traitGroups;
     }
+
     this.conversationServiceId = validatedConfig.conversationServiceId;
     if (validatedConfig.voicePublicDomain) {
       this.voicePublicDomain = validatedConfig.voicePublicDomain;
@@ -129,8 +164,22 @@ export class TACConfig {
       apiKey: process.env[EnvironmentVariables.TWILIO_API_KEY]!,
       apiToken: process.env[EnvironmentVariables.TWILIO_API_TOKEN]!,
       twilioPhoneNumber: process.env[EnvironmentVariables.TWILIO_PHONE_NUMBER]!,
+
+      // Profile service configuration
+      profileServiceProvider: process.env[EnvironmentVariables.PROFILE_SERVICE_PROVIDER] as
+        | ProfileServiceProvider
+        | undefined,
+
+      // Segment configuration
+      segmentWriteKey: process.env[EnvironmentVariables.SEGMENT_WRITE_KEY],
+      segmentSpaceId: process.env[EnvironmentVariables.SEGMENT_SPACE_ID],
+      segmentAccessToken: process.env[EnvironmentVariables.SEGMENT_ACCESS_TOKEN],
+      segmentUnifyToken: process.env[EnvironmentVariables.SEGMENT_UNIFY_TOKEN],
+
+      // Memora configuration
       memoryStoreId: process.env[EnvironmentVariables.MEMORY_STORE_ID],
       traitGroups: process.env[EnvironmentVariables.TRAIT_GROUPS]?.split(','),
+
       conversationServiceId: process.env[EnvironmentVariables.CONVERSATION_SERVICE_ID]!,
       voicePublicDomain: process.env[EnvironmentVariables.VOICE_PUBLIC_DOMAIN],
       cintelConfigurationId: process.env[EnvironmentVariables.TWILIO_TAC_CI_CONFIGURATION_ID],

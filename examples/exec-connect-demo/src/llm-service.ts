@@ -7,7 +7,7 @@
  */
 
 import { Agent, run, setDefaultOpenAIKey, setTracingDisabled } from '@openai/agents';
-import type { TAC, ConversationSession, TACMemoryResponse } from '@twilio/tac-core';
+import type { TAC, ConversationSession, TACMemoryResponse } from 'twilio-agent-connect';
 import type { WebSocket } from 'ws';
 import {
   getAvailablePlans,
@@ -17,7 +17,15 @@ import {
   runDiagnostic,
   createConfirmOrderTool,
   createFlexEscalationTool,
+  createRetrieveProfileTool,
+  createUpdateProfileTool,
+  createRetrieveMemoryTool,
+  createStoreMemoryTool,
+  type ProfileMemoryToolContext,
 } from './tools';
+import { VectorMemoryStore } from './services/vector-memory.js';
+import { EmbeddingsService } from './services/embeddings.js';
+import { CustomerStateStore } from './services/customer-state.js';
 
 /**
  * OpenAI ChatCompletion message type (simplified)
@@ -29,6 +37,9 @@ interface ChatCompletionMessageParam {
 
 export class LLMService {
   private readonly baseTools;
+  private readonly vectorDb: VectorMemoryStore;
+  private readonly embeddings: EmbeddingsService;
+  private readonly customerState: CustomerStateStore;
 
   constructor(private readonly tac: TAC) {
     // Configure OpenAI API key for Agents SDK
@@ -39,6 +50,11 @@ export class LLMService {
 
     // Disable tracing to avoid ZDR (zero data retention) errors
     setTracingDisabled(true);
+
+    // Initialize storage
+    this.vectorDb = new VectorMemoryStore('./memories.db');
+    this.embeddings = new EmbeddingsService(openaiApiKey);
+    this.customerState = new CustomerStateStore('./customer-state.db');
 
     // Base tools that don't need context injection
     this.baseTools = [
@@ -51,25 +67,44 @@ export class LLMService {
   }
 
   /**
-   * Process user message with memory context and generate response using Agents SDK.
+   * Process user message with LLM tool-based memory/profile access.
+   * Memory and profile data are NOT pre-injected - LLM calls tools explicitly.
    */
   async processMessage(
     userMessage: string,
-    memoryResponse: TACMemoryResponse | null,
+    _memoryResponse: TACMemoryResponse | null,
     context: ConversationSession,
     websocket: WebSocket | null,
     conversationHistory: ChatCompletionMessageParam[] | null = null
   ): Promise<string> {
     try {
-      // Build TAC-enhanced instructions with profile context
-      const enhancedInstructions = this._buildEnhancedInstructions(memoryResponse, context);
+      // Build minimal instructions without pre-injected memory
+      const enhancedInstructions = this._buildEnhancedInstructions(context);
+
+      // Get phone number from context
+      const phone = context.author_info?.address || '';
+
+      // Create profile/memory tool context
+      const profileMemoryContext: ProfileMemoryToolContext = {
+        phone,
+        profileService: this.tac.getProfileService(),
+        vectorDb: this.vectorDb,
+        embeddings: this.embeddings,
+        customerState: this.customerState,
+      };
 
       // Create context-aware tools dynamically
-      const tools = [...this.baseTools, createConfirmOrderTool(this.tac, context)];
-
-      if (websocket !== null) {
-        tools.push(createFlexEscalationTool(context));
-      }
+      const tools = [
+        ...this.baseTools,
+        createConfirmOrderTool(this.tac, context),
+        // Profile and memory tools - LLM calls these explicitly
+        createRetrieveProfileTool(profileMemoryContext),
+        createUpdateProfileTool(profileMemoryContext),
+        createRetrieveMemoryTool(profileMemoryContext),
+        createStoreMemoryTool(profileMemoryContext),
+        // Conditional voice-only tool
+        ...(websocket ? [createFlexEscalationTool(context)] : []),
+      ];
 
       // Create agent with TAC-enhanced instructions
       const agent = new Agent({
@@ -79,8 +114,8 @@ export class LLMService {
         tools,
       });
 
-      // Use passed conversation history if provided, otherwise build from TAC session memories
-      const messagesHistory = conversationHistory || this._buildConversationHistory(memoryResponse);
+      // Use passed conversation history if provided, otherwise empty (LLM retrieves context via tools)
+      const messagesHistory = conversationHistory || [];
 
       // Format conversation history for agent context
       // Exclude the current user message to avoid duplication (it's at the end of the history)
@@ -109,99 +144,64 @@ export class LLMService {
   }
 
   /**
-   * Build enhanced agent instructions with TAC memory context.
+   * Build agent instructions WITHOUT pre-injected memory.
+   * LLM uses tools to explicitly retrieve profile/memory data.
    */
-  private _buildEnhancedInstructions(
-    memoryResponse: TACMemoryResponse | null,
-    context: ConversationSession
-  ): string {
+  private _buildEnhancedInstructions(context: ConversationSession): string {
     // Build instructions parts
     const instructionParts = [
       "You are Owl Internet's comprehensive customer service assistant.",
-      "Your goal is to provide personalized, helpful support using the customer's " +
-        'interaction history and context.',
+      'Your goal is to provide personalized, helpful support by actively retrieving ' +
+        "customer information when needed using the tools available to you.",
       '',
-      '=== CUSTOMER PROFILE ===',
+      '=== CUSTOMER CONTEXT ===',
+      `- Phone: ${context.author_info?.address || 'Unknown'}`,
+      `- Channel: ${context.channel}`,
       `- Profile ID: ${context.profile_id || 'N/A'}`,
-    ];
-
-    // Add profile traits if available
-    if (context.profile?.traits) {
-      // Helper to recursively find a field in nested objects
-      const findField = (obj: Record<string, unknown>, fieldNames: string[]): string | null => {
-        for (const [key, value] of Object.entries(obj)) {
-          // Check if this key matches any of the field names (case-insensitive)
-          if (
-            fieldNames.some(f => f.toLowerCase() === key.toLowerCase()) &&
-            typeof value === 'string'
-          ) {
-            return value;
-          }
-          // Recursively search nested objects
-          if (value && typeof value === 'object' && !Array.isArray(value)) {
-            const found = findField(value as Record<string, unknown>, fieldNames);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      // Helper to flatten nested traits for display
-      const flattenTraits = (obj: Record<string, unknown>, prefix = ''): string[] => {
-        const lines: string[] = [];
-        for (const [key, value] of Object.entries(obj)) {
-          const fullKey = prefix ? `${prefix}.${key}` : key;
-          if (value && typeof value === 'object' && !Array.isArray(value)) {
-            lines.push(...flattenTraits(value as Record<string, unknown>, fullKey));
-          } else if (value !== null && value !== undefined) {
-            lines.push(`- ${fullKey}: ${String(value)}`);
-          }
-        }
-        return lines;
-      };
-
-      // Check for customer name in nested trait groups
-      const customerName = findField(context.profile.traits, ['name', 'firstName', 'first_name']);
-
-      if (customerName) {
-        instructionParts.push('');
-        instructionParts.push(
-          `IMPORTANT: The customer's name is ${customerName}. ` +
-            'Address them by name to personalize the conversation.'
-        );
-      }
-
-      // Add all traits (flattened for readability)
-      instructionParts.push('');
-      instructionParts.push(...flattenTraits(context.profile.traits));
-      instructionParts.push('');
-    }
-
-    // Add relevant context from observations
-    if (memoryResponse?.observations && memoryResponse.observations.length > 0) {
-      instructionParts.push('=== RELEVANT OBSERVATIONS (from TAC Memory) ===');
-      for (const obs of memoryResponse.observations) {
-        instructionParts.push(`- ${obs.content}`);
-      }
-      instructionParts.push('');
-    }
-
-    // Add conversation summaries
-    if (memoryResponse?.summaries && memoryResponse.summaries.length > 0) {
-      instructionParts.push('=== CONVERSATION SUMMARIES ===');
-      for (const summary of memoryResponse.summaries) {
-        instructionParts.push(`- ${summary.content}`);
-      }
-      instructionParts.push('');
-    }
-
-    // Add TAC-enhanced behavioral instructions
-    instructionParts.push(
+      '',
+      '=== CRITICAL: ALWAYS USE THESE TOOLS ===',
+      'You MUST use these tools to access customer data. Data is NOT pre-loaded.',
+      '',
+      '**FIRST MESSAGE - ALWAYS call retrieve_profile**',
+      '  → Call it IMMEDIATELY at the start of ANY conversation',
+      '  → Even if you think you don\'t need it, CALL IT',
+      '  → This is how you personalize the experience',
+      '',
+      '**WHEN USER SHARES INFO - ALWAYS call update_profile or store_memory**',
+      '  → User mentions plan choice → update_profile with {"plan": "standard"}',
+      '  → User mentions name → update_profile with {"name": "John"}',
+      '  → User mentions ANY preference → store_memory with type "preference"',
+      '  → User shares ANY fact → store_memory with appropriate type',
+      '',
+      '**WHEN ASKED ABOUT PAST INFO - ALWAYS call retrieve_profile or retrieve_memory**',
+      '  → "What plan do I have?" → retrieve_profile (check "plan" field)',
+      '  → "What did I say before?" → retrieve_memory with query',
+      '  → "What\'s my account number?" → retrieve_profile (check "account_number")',
+      '',
+      '=== MEMORY & PROFILE TOOLS ===',
+      '',
+      '**retrieve_profile** - Get stored customer traits from Segment/Memora',
+      '  → Returns: {traits: {name: "...", plan: "...", ...}}',
+      '  → Call with empty fields array to get all traits',
+      '',
+      '**update_profile** - Store permanent customer traits',
+      '  → Input: traits_json string like \'{"plan": "standard", "name": "John"}\'',
+      '  → Use for persistent data: names, plans, account numbers, preferences',
+      '',
+      '**retrieve_memory** - Search past conversations using semantic search',
+      '  → Input: query string describing what to find',
+      '  → Returns: list of relevant memories with similarity scores',
+      '',
+      '**store_memory** - Remember facts from this conversation',
+      '  → Input: memory text + type (fact/preference/issue/resolution)',
+      '  → Be proactive - store anything useful for future interactions',
+      '',
       '=== BEHAVIOR GUIDELINES ===',
-      '1. CONTEXT AWARENESS:',
-      '   - Use the conversation history to maintain continuity',
-      '   - Reference previous observations to show you remember past interactions',
-      '   - Use summaries to understand the broader context',
+      '1. PROACTIVE MEMORY USE (CRITICAL):',
+      '   - FIRST message → retrieve_profile (always)',
+      '   - User shares info → update_profile or store_memory (always)',
+      '   - User asks about past → retrieve_profile or retrieve_memory (always)',
+      '   - After helping → store_memory with resolution (always)',
       '',
       '2. COMMUNICATION STYLE:',
       '   - Keep responses clear, concise, and professional',
@@ -209,11 +209,11 @@ export class LLMService {
       '   - Be helpful and proactive',
       '',
       '3. SERVICE EXCELLENCE:',
-      '   - Provide helpful suggestions when appropriate',
-      '   - If you need more information to help, ask specific clarifying questions',
-      '   - Use the tools available to you to assist the customer',
+      '   - Use tools to provide better service',
+      '   - Ask clarifying questions when needed',
+      '   - Store learnings for future interactions',
       ''
-    );
+    ];
 
     // Add channel-specific formatting instructions
     if (context.channel === 'voice') {
@@ -248,12 +248,11 @@ export class LLMService {
    */
   public extractKeyLearning(
     userMessage: string,
-    aiResponse: string,
-    context: ConversationSession
+    _aiResponse: string,
+    _context: ConversationSession
   ): string | null {
     // Simple heuristic-based extraction
     const lowerMessage = userMessage.toLowerCase();
-    const lowerResponse = aiResponse.toLowerCase();
 
     // Look for name updates/inquiries
     if (
@@ -302,55 +301,15 @@ export class LLMService {
       return `Customer inquired about pricing`;
     }
 
-    // Log when no pattern matches (for debugging)
-    console.log(`[extractKeyLearning] No pattern matched for: "${userMessage.substring(0, 50)}"`);
-
     // No substantive learning to store
     return null;
   }
 
   /**
-   * Build conversation history from session memories.
-   *
-   * Session memories contain previous conversation exchanges with structured messages.
+   * Cleanup resources (close database connections)
    */
-  private _buildConversationHistory(
-    memoryResponse: TACMemoryResponse | null
-  ): ChatCompletionMessageParam[] {
-    const messages: ChatCompletionMessageParam[] = [];
-
-    if (!memoryResponse?.communications || memoryResponse.communications.length === 0) {
-      return messages;
-    }
-
-    // Extract messages from session memories
-    for (const communication of memoryResponse.communications) {
-      // Determine role using author.type if available (Memory API),
-      // otherwise fallback to address comparison (Maestro API)
-      let isCustomer = false;
-      if (communication.author.type) {
-        // Memory API provides author.type
-        isCustomer = communication.author.type === 'CUSTOMER';
-      } else {
-        // Maestro fallback: compare author address with TAC phone number
-        // If author address matches TAC phone number, it's from AI (assistant)
-        // Otherwise, it's from customer (user)
-        isCustomer = communication.author.address !== this.tac.getConfig().twilioPhoneNumber;
-      }
-
-      if (isCustomer) {
-        messages.push({
-          role: 'user',
-          content: communication.content.text || '',
-        });
-      } else {
-        messages.push({
-          role: 'assistant',
-          content: communication.content.text || '',
-        });
-      }
-    }
-
-    return messages;
+  close(): void {
+    this.vectorDb.close();
+    this.customerState.close();
   }
 }

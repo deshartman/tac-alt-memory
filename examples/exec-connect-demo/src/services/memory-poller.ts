@@ -1,5 +1,5 @@
-import { TAC } from '@twilio/tac-core';
-import { DashboardEventHandler } from '../dashboard/event-handler';
+import { TAC } from 'twilio-agent-connect';
+import { dashboardHandler } from '../dashboard/event-handler';
 
 /**
  * Memory Polling Service - TypeScript equivalent of Python's memory_poller.py
@@ -15,10 +15,10 @@ export class MemoryPoller {
   private readonly MAX_ERRORS = 10;
 
   constructor(
-    private tac: TAC,
-    private profileId: string,
-    private pollIntervalMs: number = 1500,
-    private eventEmitter: DashboardEventHandler
+    private readonly tac: TAC,
+    private readonly profileId: string,
+    private readonly pollIntervalMs: number = 1500,
+    private readonly eventEmitter: typeof dashboardHandler
   ) {}
 
   /**

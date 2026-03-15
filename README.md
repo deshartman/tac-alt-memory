@@ -14,6 +14,7 @@ Explore the [getting_started](getting_started) directory to see the SDK in actio
 - **SMS Channel Support**: Built-in webhook handling for Twilio SMS conversations
 - **Voice Channel Support**: WebSocket protocol handling for Twilio Voice with ConversationRelay
 - **Memory Management**: Automatic integration with Twilio Memory for persistent user context
+- **Profile Service Abstraction**: Pluggable identity and event tracking with Segment or Memora
 - **Conversation Lifecycle**: Automatic tracking of conversation sessions and state
 - **Type-Safe**: Full TypeScript support with strict type checking
 - **Callback-Based**: Simple `onMessageReady` callback for LLM integration with optional memory retrieval
@@ -50,6 +51,76 @@ If you have an existing project, you can install from this local repository:
 npm install /path/to/twilio-agent-connect-typescript/packages/core
 npm install /path/to/twilio-agent-connect-typescript/packages/server
 ```
+
+## Profile Service Configuration
+
+TAC supports two profile service providers for identity resolution and event tracking:
+
+### Segment (Recommended for New Projects)
+
+> **⚠️ IMPORTANT:** Requires an **upgraded Segment account** for Profile API access. The free tier only provides event tracking.
+
+**Non-blocking, fire-and-forget event tracking** for high-performance applications.
+
+#### Setup:
+
+1. **Create a Segment Source**:
+   - Log into [Segment](https://app.segment.com/)
+   - Go to **Connections > Sources > Add Source**
+   - Select **"Node.js"** (Server category) or **"HTTP API"**
+   - Name it (e.g., "TAC Agent Connect")
+   - Copy the **Write Key** from the Overview tab
+
+   ![Segment Write Key Location](./images/segment-write-key.png)
+
+2. **Get Space ID**:
+   - Go to **Settings (gear icon) > Workspace Settings**
+   - On **General Settings** tab, copy the **ID** field
+   - Format is alphanumeric (e.g., `3GYGm`), not "sp_xxxxx"
+
+   ![Segment Space ID Location](./images/segment-space-id.png)
+
+3. **Create Access Token** (for Profile API):
+   - Go to **Settings > Access Management > Tokens**
+   - Click **"Create Token"**
+   - Select **"Public API"** type
+   - Grant **Workspace Owner** permissions or minimum **Profile Read/Write**
+   - Save the token securely (won't be shown again)
+
+   ![Segment Access Token Location](./images/segment-access-token.png)
+
+4. **Configure Environment Variables**:
+   ```bash
+   PROFILE_SERVICE_PROVIDER=segment
+   SEGMENT_WRITE_KEY=your_write_key_here              # Required
+   SEGMENT_SPACE_ID=your_workspace_id_here            # Required for Profile API
+   SEGMENT_ACCESS_TOKEN=your_access_token_here        # Required for Profile API
+   ```
+
+**Performance**: Message reaches LLM in ~5ms (non-blocking)
+
+### Memora (Backward Compatibility)
+
+**Blocking identity resolution** with Twilio Memory API.
+
+```bash
+PROFILE_SERVICE_PROVIDER=memora
+MEMORY_STORE_ID=mem_service_xxxxx
+TWILIO_API_KEY=SKxxxx
+TWILIO_API_TOKEN=xxxx
+```
+
+**Performance**: SMS messages reach LLM in ~150ms (blocking profile lookup)
+
+### Comparison
+
+| Feature | Segment | Memora |
+|---------|---------|--------|
+| **Event Tracking** | ✅ identify() + track() | ❌ No event tracking |
+| **Profile Storage** | ✅ Profile API | ✅ Memory API |
+| **SMS Performance** | 🚀 5ms (non-blocking) | ⏱️ 150ms (blocking) |
+| **Voice Performance** | 🚀 5ms (non-blocking) | 🚀 5ms (non-blocking) |
+| **LLM Tools** | ✅ retrieve/update profile | ✅ retrieve/update profile |
 
 ## Quick Examples
 

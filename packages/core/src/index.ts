@@ -28,6 +28,12 @@ export { MemoryClient } from './clients/memory';
 export { ConversationClient } from './clients/conversation';
 export { KnowledgeClient } from './clients/knowledge';
 
+// Profile services
+export type { ProfileService } from './services/profile-service';
+export { SegmentProfileService } from './services/segment-profile-service';
+export type { SegmentProfileServiceConfig } from './services/segment-profile-service';
+export { MemoraProfileService } from './services/memora-profile-service';
+
 // Channel implementations
 export { BaseChannel } from './channels/base';
 export type { BaseChannelEvents } from './channels/base';

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 export { z } from 'zod';
 import pino from 'pino';
+import { Buffer as Buffer$1 } from 'buffer';
+import * as util from 'util';
+import { promisify } from 'util';
+import * as crypto2 from 'crypto';
+import { createPrivateKey, createSecretKey, KeyObject, constants } from 'crypto';
 import twilio from 'twilio';
 import { WebSocket } from 'ws';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
@@ -12,6 +17,7 @@ import gracefulShutdown from 'fastify-graceful-shutdown';
 // packages/core/src/types/tac.ts
 var EnvironmentSchema = z.enum(["dev", "stage", "prod"]).default("prod");
 var ChannelTypeSchema = z.enum(["sms", "voice"]);
+var ProfileServiceProviderSchema = z.enum(["segment", "memora"]);
 var TACConfigSchema = z.object({
   environment: EnvironmentSchema,
   twilioAccountSid: z.string().min(1, "Twilio Account SID is required"),
@@ -19,6 +25,14 @@ var TACConfigSchema = z.object({
   apiKey: z.string().min(1, "API Key is required"),
   apiToken: z.string().min(1, "API Token is required"),
   twilioPhoneNumber: z.string().min(1, "Twilio Phone Number is required"),
+  // Profile service provider (segment or memora)
+  profileServiceProvider: ProfileServiceProviderSchema.optional(),
+  // Segment configuration (for segment profile service)
+  segmentWriteKey: z.string().optional(),
+  segmentSpaceId: z.string().optional(),
+  segmentAccessToken: z.string().optional(),
+  segmentUnifyToken: z.string().optional(),
+  // Memora configuration (for memora profile service)
   memoryStoreId: z.string().regex(/^mem_(service|store)_[0-9a-z]{26}$/, "Invalid Memory Store ID format").optional(),
   traitGroups: z.array(z.string()).optional(),
   conversationServiceId: z.string().regex(
@@ -44,6 +58,14 @@ var EnvironmentVariables = {
   TWILIO_API_KEY: "TWILIO_API_KEY",
   TWILIO_API_TOKEN: "TWILIO_API_TOKEN",
   TWILIO_PHONE_NUMBER: "TWILIO_PHONE_NUMBER",
+  // Profile service configuration
+  PROFILE_SERVICE_PROVIDER: "PROFILE_SERVICE_PROVIDER",
+  // Segment configuration
+  SEGMENT_WRITE_KEY: "SEGMENT_WRITE_KEY",
+  SEGMENT_SPACE_ID: "SEGMENT_SPACE_ID",
+  SEGMENT_ACCESS_TOKEN: "SEGMENT_ACCESS_TOKEN",
+  SEGMENT_UNIFY_TOKEN: "SEGMENT_UNIFY_TOKEN",
+  // Memora configuration
   MEMORY_STORE_ID: "MEMORY_STORE_ID",
   TRAIT_GROUPS: "TRAIT_GROUPS",
   CONVERSATION_SERVICE_ID: "CONVERSATION_SERVICE_ID",
@@ -224,8 +246,8 @@ var ConversationsConversationDataSchema = z.object({
   name: z.string().nullable().optional(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
-  profileId: z.string().optional(),
-  // Profile ID may be included in conversation events
+  profileId: z.string().nullish(),
+  // Profile ID may be included in conversation events (can be null)
   participantType: z.string().optional(),
   // May be included for cross-event compatibility
   // Communication-specific fields (optional for cross-event compatibility)
@@ -253,7 +275,8 @@ var ConversationsParticipantDataSchema = z.object({
   type: z.enum(["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]).optional(),
   participantType: z.string().optional(),
   // Legacy field name (same as 'type')
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
+  // Can be null in some webhook events
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
   addresses: z.array(
@@ -812,6 +835,14 @@ var TACConfig = class _TACConfig {
   apiKey;
   apiToken;
   twilioPhoneNumber;
+  // Profile service configuration
+  profileServiceProvider;
+  // Segment configuration
+  segmentWriteKey;
+  segmentSpaceId;
+  segmentAccessToken;
+  segmentUnifyToken;
+  // Memora configuration
   memoryStoreId;
   traitGroups;
   conversationServiceId;
@@ -831,6 +862,21 @@ var TACConfig = class _TACConfig {
     this.apiKey = validatedConfig.apiKey;
     this.apiToken = validatedConfig.apiToken;
     this.twilioPhoneNumber = validatedConfig.twilioPhoneNumber;
+    if (validatedConfig.profileServiceProvider) {
+      this.profileServiceProvider = validatedConfig.profileServiceProvider;
+    }
+    if (validatedConfig.segmentWriteKey) {
+      this.segmentWriteKey = validatedConfig.segmentWriteKey;
+    }
+    if (validatedConfig.segmentSpaceId) {
+      this.segmentSpaceId = validatedConfig.segmentSpaceId;
+    }
+    if (validatedConfig.segmentAccessToken) {
+      this.segmentAccessToken = validatedConfig.segmentAccessToken;
+    }
+    if (validatedConfig.segmentUnifyToken) {
+      this.segmentUnifyToken = validatedConfig.segmentUnifyToken;
+    }
     if (validatedConfig.memoryStoreId) {
       this.memoryStoreId = validatedConfig.memoryStoreId;
     }
@@ -901,6 +947,14 @@ var TACConfig = class _TACConfig {
       apiKey: process.env[EnvironmentVariables.TWILIO_API_KEY],
       apiToken: process.env[EnvironmentVariables.TWILIO_API_TOKEN],
       twilioPhoneNumber: process.env[EnvironmentVariables.TWILIO_PHONE_NUMBER],
+      // Profile service configuration
+      profileServiceProvider: process.env[EnvironmentVariables.PROFILE_SERVICE_PROVIDER],
+      // Segment configuration
+      segmentWriteKey: process.env[EnvironmentVariables.SEGMENT_WRITE_KEY],
+      segmentSpaceId: process.env[EnvironmentVariables.SEGMENT_SPACE_ID],
+      segmentAccessToken: process.env[EnvironmentVariables.SEGMENT_ACCESS_TOKEN],
+      segmentUnifyToken: process.env[EnvironmentVariables.SEGMENT_UNIFY_TOKEN],
+      // Memora configuration
       memoryStoreId: process.env[EnvironmentVariables.MEMORY_STORE_ID],
       traitGroups: process.env[EnvironmentVariables.TRAIT_GROUPS]?.split(","),
       conversationServiceId: process.env[EnvironmentVariables.CONVERSATION_SERVICE_ID],
@@ -1929,6 +1983,3363 @@ var OperatorResultProcessor = class {
   }
 };
 
+// node_modules/tslib/tslib.es6.mjs
+var extendStatics = function(d, b) {
+  extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
+    d2.__proto__ = b2;
+  } || function(d2, b2) {
+    for (var p in b2) if (Object.prototype.hasOwnProperty.call(b2, p)) d2[p] = b2[p];
+  };
+  return extendStatics(d, b);
+};
+function __extends(d, b) {
+  if (typeof b !== "function" && b !== null)
+    throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+  extendStatics(d, b);
+  function __() {
+    this.constructor = d;
+  }
+  d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+}
+var __assign = function() {
+  __assign = Object.assign || function __assign2(t) {
+    for (var s, i = 1, n = arguments.length; i < n; i++) {
+      s = arguments[i];
+      for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+    }
+    return t;
+  };
+  return __assign.apply(this, arguments);
+};
+function __rest(s, e) {
+  var t = {};
+  for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+    t[p] = s[p];
+  if (s != null && typeof Object.getOwnPropertySymbols === "function")
+    for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+      if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+        t[p[i]] = s[p[i]];
+    }
+  return t;
+}
+function __awaiter(thisArg, _arguments, P, generator) {
+  function adopt(value) {
+    return value instanceof P ? value : new P(function(resolve) {
+      resolve(value);
+    });
+  }
+  return new (P || (P = Promise))(function(resolve, reject) {
+    function fulfilled(value) {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    }
+    function rejected(value) {
+      try {
+        step(generator["throw"](value));
+      } catch (e) {
+        reject(e);
+      }
+    }
+    function step(result) {
+      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    }
+    step((generator = generator.apply(thisArg, [])).next());
+  });
+}
+function __generator(thisArg, body) {
+  var _ = { label: 0, sent: function() {
+    if (t[0] & 1) throw t[1];
+    return t[1];
+  }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+  return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() {
+    return this;
+  }), g;
+  function verb(n) {
+    return function(v) {
+      return step([n, v]);
+    };
+  }
+  function step(op) {
+    if (f) throw new TypeError("Generator is already executing.");
+    while (g && (g = 0, op[0] && (_ = 0)), _) try {
+      if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+      if (y = 0, t) op = [op[0] & 2, t.value];
+      switch (op[0]) {
+        case 0:
+        case 1:
+          t = op;
+          break;
+        case 4:
+          _.label++;
+          return { value: op[1], done: false };
+        case 5:
+          _.label++;
+          y = op[1];
+          op = [0];
+          continue;
+        case 7:
+          op = _.ops.pop();
+          _.trys.pop();
+          continue;
+        default:
+          if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) {
+            _ = 0;
+            continue;
+          }
+          if (op[0] === 3 && (!t || op[1] > t[0] && op[1] < t[3])) {
+            _.label = op[1];
+            break;
+          }
+          if (op[0] === 6 && _.label < t[1]) {
+            _.label = t[1];
+            t = op;
+            break;
+          }
+          if (t && _.label < t[2]) {
+            _.label = t[2];
+            _.ops.push(op);
+            break;
+          }
+          if (t[2]) _.ops.pop();
+          _.trys.pop();
+          continue;
+      }
+      op = body.call(thisArg, _);
+    } catch (e) {
+      op = [6, e];
+      y = 0;
+    } finally {
+      f = t = 0;
+    }
+    if (op[0] & 5) throw op[1];
+    return { value: op[0] ? op[1] : void 0, done: true };
+  }
+}
+function __spreadArray(to, from, pack) {
+  if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+    if (ar || !(i in from)) {
+      if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+      ar[i] = from[i];
+    }
+  }
+  return to.concat(ar || Array.prototype.slice.call(from));
+}
+
+// node_modules/dset/dist/index.mjs
+function dset(obj, keys, val) {
+  keys.split && (keys = keys.split("."));
+  var i = 0, l = keys.length, t = obj, x, k;
+  while (i < l) {
+    k = "" + keys[i++];
+    if (k === "__proto__" || k === "constructor" || k === "prototype") break;
+    t = t[k] = i === l ? val : typeof (x = t[k]) === typeof keys ? x : keys[i] * 0 !== 0 || !!~("" + keys[i]).indexOf(".") ? {} : [];
+  }
+}
+
+// node_modules/@segment/analytics-core/dist/esm/utils/pick.js
+var pickBy = function(obj, fn) {
+  return Object.keys(obj).filter(function(k) {
+    return fn(k, obj[k]);
+  }).reduce(function(acc, key) {
+    return acc[key] = obj[key], acc;
+  }, {});
+};
+
+// node_modules/@segment/analytics-core/dist/esm/validation/errors.js
+var ValidationError = (
+  /** @class */
+  (function(_super) {
+    __extends(ValidationError2, _super);
+    function ValidationError2(field, message2) {
+      var _this = _super.call(this, "".concat(field, " ").concat(message2)) || this;
+      _this.field = field;
+      return _this;
+    }
+    return ValidationError2;
+  })(Error)
+);
+
+// node_modules/@segment/analytics-core/dist/esm/validation/helpers.js
+function isString(obj) {
+  return typeof obj === "string";
+}
+function exists(val) {
+  return val !== void 0 && val !== null;
+}
+function isPlainObject(obj) {
+  return Object.prototype.toString.call(obj).slice(8, -1).toLowerCase() === "object";
+}
+
+// node_modules/@segment/analytics-core/dist/esm/validation/assertions.js
+var stringError = "is not a string";
+var objError = "is not an object";
+var nilError = "is nil";
+function assertUserIdentity(event) {
+  var USER_FIELD_NAME = ".userId/anonymousId/previousId/groupId";
+  var getAnyUserId = function(event2) {
+    var _a, _b, _c;
+    return (_c = (_b = (_a = event2.userId) !== null && _a !== void 0 ? _a : event2.anonymousId) !== null && _b !== void 0 ? _b : event2.groupId) !== null && _c !== void 0 ? _c : event2.previousId;
+  };
+  var id = getAnyUserId(event);
+  if (!exists(id)) {
+    throw new ValidationError(USER_FIELD_NAME, nilError);
+  } else if (!isString(id)) {
+    throw new ValidationError(USER_FIELD_NAME, stringError);
+  }
+}
+function assertEventExists(event) {
+  if (!exists(event)) {
+    throw new ValidationError("Event", nilError);
+  }
+  if (typeof event !== "object") {
+    throw new ValidationError("Event", objError);
+  }
+}
+function assertEventType(event) {
+  if (!isString(event.type)) {
+    throw new ValidationError(".type", stringError);
+  }
+}
+function assertTrackEventName(event) {
+  if (!isString(event.event)) {
+    throw new ValidationError(".event", stringError);
+  }
+}
+function assertTrackEventProperties(event) {
+  if (!isPlainObject(event.properties)) {
+    throw new ValidationError(".properties", objError);
+  }
+}
+function assertTraits(event) {
+  if (!isPlainObject(event.traits)) {
+    throw new ValidationError(".traits", objError);
+  }
+}
+function assertMessageId(event) {
+  if (!isString(event.messageId)) {
+    throw new ValidationError(".messageId", stringError);
+  }
+}
+function validateEvent(event) {
+  assertEventExists(event);
+  assertEventType(event);
+  assertMessageId(event);
+  if (event.type === "track") {
+    assertTrackEventName(event);
+    assertTrackEventProperties(event);
+  }
+  if (["group", "identify"].includes(event.type)) {
+    assertTraits(event);
+  }
+}
+
+// node_modules/@segment/analytics-core/dist/esm/events/index.js
+var InternalEventFactorySettings = (
+  /** @class */
+  /* @__PURE__ */ (function() {
+    function InternalEventFactorySettings2(settings) {
+      var _a, _b;
+      this.settings = settings;
+      this.createMessageId = settings.createMessageId;
+      this.onEventMethodCall = (_a = settings.onEventMethodCall) !== null && _a !== void 0 ? _a : (function() {
+      });
+      this.onFinishedEvent = (_b = settings.onFinishedEvent) !== null && _b !== void 0 ? _b : (function() {
+      });
+    }
+    return InternalEventFactorySettings2;
+  })()
+);
+var CoreEventFactory = (
+  /** @class */
+  (function() {
+    function CoreEventFactory2(settings) {
+      this.settings = new InternalEventFactorySettings(settings);
+    }
+    CoreEventFactory2.prototype.track = function(event, properties, options, integrationOptions) {
+      this.settings.onEventMethodCall({ type: "track", options });
+      return this.normalize(__assign(__assign({}, this.baseEvent()), { event, type: "track", properties: properties !== null && properties !== void 0 ? properties : {}, options: __assign({}, options), integrations: __assign({}, integrationOptions) }));
+    };
+    CoreEventFactory2.prototype.page = function(category, page, properties, options, integrationOptions) {
+      var _a;
+      this.settings.onEventMethodCall({ type: "page", options });
+      var event = {
+        type: "page",
+        properties: __assign({}, properties),
+        options: __assign({}, options),
+        integrations: __assign({}, integrationOptions)
+      };
+      if (category !== null) {
+        event.category = category;
+        event.properties = (_a = event.properties) !== null && _a !== void 0 ? _a : {};
+        event.properties.category = category;
+      }
+      if (page !== null) {
+        event.name = page;
+      }
+      return this.normalize(__assign(__assign({}, this.baseEvent()), event));
+    };
+    CoreEventFactory2.prototype.screen = function(category, screen, properties, options, integrationOptions) {
+      this.settings.onEventMethodCall({ type: "screen", options });
+      var event = {
+        type: "screen",
+        properties: __assign({}, properties),
+        options: __assign({}, options),
+        integrations: __assign({}, integrationOptions)
+      };
+      if (category !== null) {
+        event.category = category;
+      }
+      if (screen !== null) {
+        event.name = screen;
+      }
+      return this.normalize(__assign(__assign({}, this.baseEvent()), event));
+    };
+    CoreEventFactory2.prototype.identify = function(userId, traits, options, integrationsOptions) {
+      this.settings.onEventMethodCall({ type: "identify", options });
+      return this.normalize(__assign(__assign({}, this.baseEvent()), { type: "identify", userId, traits: traits !== null && traits !== void 0 ? traits : {}, options: __assign({}, options), integrations: integrationsOptions }));
+    };
+    CoreEventFactory2.prototype.group = function(groupId, traits, options, integrationOptions) {
+      this.settings.onEventMethodCall({ type: "group", options });
+      return this.normalize(__assign(__assign({}, this.baseEvent()), {
+        type: "group",
+        traits: traits !== null && traits !== void 0 ? traits : {},
+        options: __assign({}, options),
+        integrations: __assign({}, integrationOptions),
+        //
+        groupId
+      }));
+    };
+    CoreEventFactory2.prototype.alias = function(to, from, options, integrationOptions) {
+      this.settings.onEventMethodCall({ type: "alias", options });
+      var base = {
+        userId: to,
+        type: "alias",
+        options: __assign({}, options),
+        integrations: __assign({}, integrationOptions)
+      };
+      if (from !== null) {
+        base.previousId = from;
+      }
+      if (to === void 0) {
+        return this.normalize(__assign(__assign({}, base), this.baseEvent()));
+      }
+      return this.normalize(__assign(__assign({}, this.baseEvent()), base));
+    };
+    CoreEventFactory2.prototype.baseEvent = function() {
+      return {
+        integrations: {},
+        options: {}
+      };
+    };
+    CoreEventFactory2.prototype.context = function(options) {
+      var _a;
+      var eventOverrideKeys = [
+        "userId",
+        "anonymousId",
+        "timestamp",
+        "messageId"
+      ];
+      delete options["integrations"];
+      var providedOptionsKeys = Object.keys(options);
+      var context = (_a = options.context) !== null && _a !== void 0 ? _a : {};
+      var eventOverrides = {};
+      providedOptionsKeys.forEach(function(key) {
+        if (key === "context") {
+          return;
+        }
+        if (eventOverrideKeys.includes(key)) {
+          dset(eventOverrides, key, options[key]);
+        } else {
+          dset(context, key, options[key]);
+        }
+      });
+      return [context, eventOverrides];
+    };
+    CoreEventFactory2.prototype.normalize = function(event) {
+      var _a, _b;
+      var integrationBooleans = Object.keys((_a = event.integrations) !== null && _a !== void 0 ? _a : {}).reduce(function(integrationNames, name) {
+        var _a2;
+        var _b2;
+        return __assign(__assign({}, integrationNames), (_a2 = {}, _a2[name] = Boolean((_b2 = event.integrations) === null || _b2 === void 0 ? void 0 : _b2[name]), _a2));
+      }, {});
+      event.options = pickBy(event.options || {}, function(_, value) {
+        return value !== void 0;
+      });
+      var allIntegrations = __assign(__assign({}, integrationBooleans), (_b = event.options) === null || _b === void 0 ? void 0 : _b.integrations);
+      var _c = event.options ? this.context(event.options) : [], context = _c[0], overrides = _c[1];
+      var options = event.options, rest = __rest(event, ["options"]);
+      var evt = __assign(__assign(__assign(__assign({ timestamp: /* @__PURE__ */ new Date() }, rest), { context, integrations: allIntegrations }), overrides), { messageId: options.messageId || this.settings.createMessageId() });
+      this.settings.onFinishedEvent(evt);
+      validateEvent(evt);
+      return evt;
+    };
+    return CoreEventFactory2;
+  })()
+);
+
+// node_modules/@segment/analytics-core/dist/esm/callback/index.js
+function pTimeout(promise, timeout) {
+  return new Promise(function(resolve, reject) {
+    var timeoutId = setTimeout(function() {
+      reject(Error("Promise timed out"));
+    }, timeout);
+    promise.then(function(val) {
+      clearTimeout(timeoutId);
+      return resolve(val);
+    }).catch(reject);
+  });
+}
+function sleep(timeoutInMs) {
+  return new Promise(function(resolve) {
+    return setTimeout(resolve, timeoutInMs);
+  });
+}
+function invokeCallback(ctx, callback, delay) {
+  var cb = function() {
+    try {
+      return Promise.resolve(callback(ctx));
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  };
+  return sleep(delay).then(function() {
+    return pTimeout(cb(), 1e3);
+  }).catch(function(err) {
+    ctx === null || ctx === void 0 ? void 0 : ctx.log("warn", "Callback Error", { error: err });
+    ctx === null || ctx === void 0 ? void 0 : ctx.stats.increment("callback_error");
+  }).then(function() {
+    return ctx;
+  });
+}
+
+// node_modules/@segment/analytics-generic-utils/dist/esm/create-deferred/create-deferred.js
+var createDeferred = function() {
+  var resolve;
+  var reject;
+  var settled = false;
+  var promise = new Promise(function(_resolve, _reject) {
+    resolve = function() {
+      var args = [];
+      for (var _i = 0; _i < arguments.length; _i++) {
+        args[_i] = arguments[_i];
+      }
+      settled = true;
+      _resolve.apply(void 0, args);
+    };
+    reject = function() {
+      var args = [];
+      for (var _i = 0; _i < arguments.length; _i++) {
+        args[_i] = arguments[_i];
+      }
+      settled = true;
+      _reject.apply(void 0, args);
+    };
+  });
+  return {
+    resolve,
+    reject,
+    promise,
+    isSettled: function() {
+      return settled;
+    }
+  };
+};
+
+// node_modules/@segment/analytics-generic-utils/dist/esm/emitter/emitter.js
+var Emitter = (
+  /** @class */
+  (function() {
+    function Emitter2(options) {
+      var _a;
+      this.callbacks = {};
+      this.warned = false;
+      this.maxListeners = (_a = options === null || options === void 0 ? void 0 : options.maxListeners) !== null && _a !== void 0 ? _a : 10;
+    }
+    Emitter2.prototype.warnIfPossibleMemoryLeak = function(event) {
+      if (this.warned) {
+        return;
+      }
+      if (this.maxListeners && this.callbacks[event].length > this.maxListeners) {
+        console.warn("Event Emitter: Possible memory leak detected; ".concat(String(event), " has exceeded ").concat(this.maxListeners, " listeners."));
+        this.warned = true;
+      }
+    };
+    Emitter2.prototype.on = function(event, callback) {
+      if (!this.callbacks[event]) {
+        this.callbacks[event] = [callback];
+      } else {
+        this.callbacks[event].push(callback);
+        this.warnIfPossibleMemoryLeak(event);
+      }
+      return this;
+    };
+    Emitter2.prototype.once = function(event, callback) {
+      var _this = this;
+      var on = function() {
+        var args = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+          args[_i] = arguments[_i];
+        }
+        _this.off(event, on);
+        callback.apply(_this, args);
+      };
+      this.on(event, on);
+      return this;
+    };
+    Emitter2.prototype.off = function(event, callback) {
+      var _a;
+      var fns = (_a = this.callbacks[event]) !== null && _a !== void 0 ? _a : [];
+      var without = fns.filter(function(fn) {
+        return fn !== callback;
+      });
+      this.callbacks[event] = without;
+      return this;
+    };
+    Emitter2.prototype.emit = function(event) {
+      var _this = this;
+      var _a;
+      var args = [];
+      for (var _i = 1; _i < arguments.length; _i++) {
+        args[_i - 1] = arguments[_i];
+      }
+      var callbacks = (_a = this.callbacks[event]) !== null && _a !== void 0 ? _a : [];
+      callbacks.forEach(function(callback) {
+        callback.apply(_this, args);
+      });
+      return this;
+    };
+    return Emitter2;
+  })()
+);
+
+// node_modules/@segment/analytics-core/dist/esm/priority-queue/backoff.js
+function backoff(params) {
+  var random = Math.random() + 1;
+  var _a = params.minTimeout, minTimeout = _a === void 0 ? 500 : _a, _b = params.factor, factor = _b === void 0 ? 2 : _b, attempt2 = params.attempt, _c = params.maxTimeout, maxTimeout = _c === void 0 ? Infinity : _c;
+  return Math.min(random * minTimeout * Math.pow(factor, attempt2), maxTimeout);
+}
+
+// node_modules/@segment/analytics-core/dist/esm/priority-queue/index.js
+var ON_REMOVE_FROM_FUTURE = "onRemoveFromFuture";
+var PriorityQueue = (
+  /** @class */
+  (function(_super) {
+    __extends(PriorityQueue2, _super);
+    function PriorityQueue2(maxAttempts, queue, seen) {
+      var _this = _super.call(this) || this;
+      _this.future = [];
+      _this.maxAttempts = maxAttempts;
+      _this.queue = queue;
+      _this.seen = seen !== null && seen !== void 0 ? seen : {};
+      return _this;
+    }
+    PriorityQueue2.prototype.push = function() {
+      var _this = this;
+      var items = [];
+      for (var _i = 0; _i < arguments.length; _i++) {
+        items[_i] = arguments[_i];
+      }
+      var accepted = items.map(function(operation) {
+        var attempts = _this.updateAttempts(operation);
+        if (attempts > _this.maxAttempts || _this.includes(operation)) {
+          return false;
+        }
+        _this.queue.push(operation);
+        return true;
+      });
+      this.queue = this.queue.sort(function(a, b) {
+        return _this.getAttempts(a) - _this.getAttempts(b);
+      });
+      return accepted;
+    };
+    PriorityQueue2.prototype.pushWithBackoff = function(item, minTimeout) {
+      var _this = this;
+      if (minTimeout === void 0) {
+        minTimeout = 0;
+      }
+      if (minTimeout == 0 && this.getAttempts(item) === 0) {
+        return this.push(item)[0];
+      }
+      var attempt2 = this.updateAttempts(item);
+      if (attempt2 > this.maxAttempts || this.includes(item)) {
+        return false;
+      }
+      var timeout = backoff({ attempt: attempt2 - 1 });
+      if (minTimeout > 0 && timeout < minTimeout) {
+        timeout = minTimeout;
+      }
+      setTimeout(function() {
+        _this.queue.push(item);
+        _this.future = _this.future.filter(function(f) {
+          return f.id !== item.id;
+        });
+        _this.emit(ON_REMOVE_FROM_FUTURE);
+      }, timeout);
+      this.future.push(item);
+      return true;
+    };
+    PriorityQueue2.prototype.getAttempts = function(item) {
+      var _a;
+      return (_a = this.seen[item.id]) !== null && _a !== void 0 ? _a : 0;
+    };
+    PriorityQueue2.prototype.updateAttempts = function(item) {
+      this.seen[item.id] = this.getAttempts(item) + 1;
+      return this.getAttempts(item);
+    };
+    PriorityQueue2.prototype.includes = function(item) {
+      return this.queue.includes(item) || this.future.includes(item) || Boolean(this.queue.find(function(i) {
+        return i.id === item.id;
+      })) || Boolean(this.future.find(function(i) {
+        return i.id === item.id;
+      }));
+    };
+    PriorityQueue2.prototype.pop = function() {
+      return this.queue.shift();
+    };
+    Object.defineProperty(PriorityQueue2.prototype, "length", {
+      get: function() {
+        return this.queue.length;
+      },
+      enumerable: false,
+      configurable: true
+    });
+    Object.defineProperty(PriorityQueue2.prototype, "todo", {
+      get: function() {
+        return this.queue.length + this.future.length;
+      },
+      enumerable: false,
+      configurable: true
+    });
+    return PriorityQueue2;
+  })(Emitter)
+);
+
+// node_modules/@lukeed/uuid/dist/index.mjs
+var IDX = 256;
+var HEX = [];
+var BUFFER;
+while (IDX--) HEX[IDX] = (IDX + 256).toString(16).substring(1);
+function v4() {
+  var i = 0, num, out = "";
+  if (!BUFFER || IDX + 16 > 256) {
+    BUFFER = Array(i = 256);
+    while (i--) BUFFER[i] = 256 * Math.random() | 0;
+    i = IDX = 0;
+  }
+  for (; i < 16; i++) {
+    num = BUFFER[IDX + i];
+    if (i == 6) out += HEX[num & 15 | 64];
+    else if (i == 8) out += HEX[num & 63 | 128];
+    else out += HEX[num];
+    if (i & 1 && i > 1 && i < 11) out += "-";
+  }
+  IDX++;
+  return out;
+}
+
+// node_modules/@segment/analytics-core/dist/esm/logger/index.js
+var CoreLogger = (
+  /** @class */
+  (function() {
+    function CoreLogger2() {
+      this._logs = [];
+    }
+    CoreLogger2.prototype.log = function(level, message2, extras) {
+      var time = /* @__PURE__ */ new Date();
+      this._logs.push({
+        level,
+        message: message2,
+        time,
+        extras
+      });
+    };
+    Object.defineProperty(CoreLogger2.prototype, "logs", {
+      get: function() {
+        return this._logs;
+      },
+      enumerable: false,
+      configurable: true
+    });
+    CoreLogger2.prototype.flush = function() {
+      if (this.logs.length > 1) {
+        var formatted = this._logs.reduce(function(logs, log) {
+          var _a;
+          var _b, _c;
+          var line = __assign(__assign({}, log), { json: JSON.stringify(log.extras, null, " "), extras: log.extras });
+          delete line["time"];
+          var key = (_c = (_b = log.time) === null || _b === void 0 ? void 0 : _b.toISOString()) !== null && _c !== void 0 ? _c : "";
+          if (logs[key]) {
+            key = "".concat(key, "-").concat(Math.random());
+          }
+          return __assign(__assign({}, logs), (_a = {}, _a[key] = line, _a));
+        }, {});
+        if (console.table) {
+          console.table(formatted);
+        } else {
+          console.log(formatted);
+        }
+      } else {
+        this.logs.forEach(function(logEntry) {
+          var level = logEntry.level, message2 = logEntry.message, extras = logEntry.extras;
+          if (level === "info" || level === "debug") {
+            console.log(message2, extras !== null && extras !== void 0 ? extras : "");
+          } else {
+            console[level](message2, extras !== null && extras !== void 0 ? extras : "");
+          }
+        });
+      }
+      this._logs = [];
+    };
+    return CoreLogger2;
+  })()
+);
+
+// node_modules/@segment/analytics-core/dist/esm/stats/index.js
+var compactMetricType = function(type) {
+  var enums = {
+    gauge: "g",
+    counter: "c"
+  };
+  return enums[type];
+};
+var CoreStats = (
+  /** @class */
+  (function() {
+    function CoreStats2() {
+      this.metrics = [];
+    }
+    CoreStats2.prototype.increment = function(metric, by, tags) {
+      if (by === void 0) {
+        by = 1;
+      }
+      this.metrics.push({
+        metric,
+        value: by,
+        tags: tags !== null && tags !== void 0 ? tags : [],
+        type: "counter",
+        timestamp: Date.now()
+      });
+    };
+    CoreStats2.prototype.gauge = function(metric, value, tags) {
+      this.metrics.push({
+        metric,
+        value,
+        tags: tags !== null && tags !== void 0 ? tags : [],
+        type: "gauge",
+        timestamp: Date.now()
+      });
+    };
+    CoreStats2.prototype.flush = function() {
+      var formatted = this.metrics.map(function(m) {
+        return __assign(__assign({}, m), { tags: m.tags.join(",") });
+      });
+      if (console.table) {
+        console.table(formatted);
+      } else {
+        console.log(formatted);
+      }
+      this.metrics = [];
+    };
+    CoreStats2.prototype.serialize = function() {
+      return this.metrics.map(function(m) {
+        return {
+          m: m.metric,
+          v: m.value,
+          t: m.tags,
+          k: compactMetricType(m.type),
+          e: m.timestamp
+        };
+      });
+    };
+    return CoreStats2;
+  })()
+);
+var NullStats = (
+  /** @class */
+  (function(_super) {
+    __extends(NullStats2, _super);
+    function NullStats2() {
+      return _super !== null && _super.apply(this, arguments) || this;
+    }
+    NullStats2.prototype.gauge = function() {
+    };
+    NullStats2.prototype.increment = function() {
+    };
+    NullStats2.prototype.flush = function() {
+    };
+    NullStats2.prototype.serialize = function() {
+      return [];
+    };
+    return NullStats2;
+  })(CoreStats)
+);
+
+// node_modules/@segment/analytics-core/dist/esm/context/index.js
+var ContextCancelation = (
+  /** @class */
+  /* @__PURE__ */ (function() {
+    function ContextCancelation2(options) {
+      var _a, _b, _c;
+      this.retry = (_a = options.retry) !== null && _a !== void 0 ? _a : true;
+      this.type = (_b = options.type) !== null && _b !== void 0 ? _b : "plugin Error";
+      this.reason = (_c = options.reason) !== null && _c !== void 0 ? _c : "";
+    }
+    return ContextCancelation2;
+  })()
+);
+var CoreContext = (
+  /** @class */
+  (function() {
+    function CoreContext2(event, id, stats, logger2) {
+      if (id === void 0) {
+        id = v4();
+      }
+      if (stats === void 0) {
+        stats = new NullStats();
+      }
+      if (logger2 === void 0) {
+        logger2 = new CoreLogger();
+      }
+      this.attempts = 0;
+      this.event = event;
+      this._id = id;
+      this.logger = logger2;
+      this.stats = stats;
+    }
+    CoreContext2.system = function() {
+    };
+    CoreContext2.prototype.isSame = function(other) {
+      return other.id === this.id;
+    };
+    CoreContext2.prototype.cancel = function(error) {
+      if (error) {
+        throw error;
+      }
+      throw new ContextCancelation({ reason: "Context Cancel" });
+    };
+    CoreContext2.prototype.log = function(level, message2, extras) {
+      this.logger.log(level, message2, extras);
+    };
+    Object.defineProperty(CoreContext2.prototype, "id", {
+      get: function() {
+        return this._id;
+      },
+      enumerable: false,
+      configurable: true
+    });
+    CoreContext2.prototype.updateEvent = function(path, val) {
+      var _a;
+      if (path.split(".")[0] === "integrations") {
+        var integrationName = path.split(".")[1];
+        if (((_a = this.event.integrations) === null || _a === void 0 ? void 0 : _a[integrationName]) === false) {
+          return this.event;
+        }
+      }
+      dset(this.event, path, val);
+      return this.event;
+    };
+    CoreContext2.prototype.failedDelivery = function() {
+      return this._failedDelivery;
+    };
+    CoreContext2.prototype.setFailedDelivery = function(options) {
+      this._failedDelivery = options;
+    };
+    CoreContext2.prototype.logs = function() {
+      return this.logger.logs;
+    };
+    CoreContext2.prototype.flush = function() {
+      this.logger.flush();
+      this.stats.flush();
+    };
+    CoreContext2.prototype.toJSON = function() {
+      return {
+        id: this._id,
+        event: this.event,
+        logs: this.logger.logs,
+        metrics: this.stats.metrics
+      };
+    };
+    return CoreContext2;
+  })()
+);
+
+// node_modules/@segment/analytics-core/dist/esm/utils/group-by.js
+function groupBy(collection, grouper) {
+  var results = {};
+  collection.forEach(function(item) {
+    var _a;
+    var key = void 0;
+    {
+      var suggestedKey = item[grouper];
+      key = typeof suggestedKey !== "string" ? JSON.stringify(suggestedKey) : suggestedKey;
+    }
+    if (key === void 0) {
+      return;
+    }
+    results[key] = __spreadArray(__spreadArray([], (_a = results[key]) !== null && _a !== void 0 ? _a : [], true), [item], false);
+  });
+  return results;
+}
+
+// node_modules/@segment/analytics-core/dist/esm/utils/is-thenable.js
+var isThenable = function(value) {
+  return typeof value === "object" && value !== null && "then" in value && typeof value.then === "function";
+};
+
+// node_modules/@segment/analytics-core/dist/esm/task/task-group.js
+var createTaskGroup = function() {
+  var taskCompletionPromise;
+  var resolvePromise;
+  var count = 0;
+  return {
+    done: function() {
+      return taskCompletionPromise;
+    },
+    run: function(op) {
+      var returnValue = op();
+      if (isThenable(returnValue)) {
+        if (++count === 1) {
+          taskCompletionPromise = new Promise(function(res) {
+            return resolvePromise = res;
+          });
+        }
+        returnValue.finally(function() {
+          return --count === 0 && resolvePromise();
+        });
+      }
+      return returnValue;
+    }
+  };
+};
+
+// node_modules/@segment/analytics-core/dist/esm/queue/delivery.js
+function tryAsync(fn) {
+  return __awaiter(this, void 0, void 0, function() {
+    var err_1;
+    return __generator(this, function(_a) {
+      switch (_a.label) {
+        case 0:
+          _a.trys.push([0, 2, , 3]);
+          return [4, fn()];
+        case 1:
+          return [2, _a.sent()];
+        case 2:
+          err_1 = _a.sent();
+          return [2, Promise.reject(err_1)];
+        case 3:
+          return [
+            2
+            /*return*/
+          ];
+      }
+    });
+  });
+}
+function attempt(ctx, plugin) {
+  ctx.log("debug", "plugin", { plugin: plugin.name });
+  var start = (/* @__PURE__ */ new Date()).getTime();
+  var hook = plugin[ctx.event.type];
+  if (hook === void 0) {
+    return Promise.resolve(ctx);
+  }
+  var newCtx = tryAsync(function() {
+    return hook.apply(plugin, [ctx]);
+  }).then(function(ctx2) {
+    var done = (/* @__PURE__ */ new Date()).getTime() - start;
+    ctx2.stats.gauge("plugin_time", done, ["plugin:".concat(plugin.name)]);
+    return ctx2;
+  }).catch(function(err) {
+    if (err instanceof ContextCancelation && err.type === "middleware_cancellation") {
+      throw err;
+    }
+    if (err instanceof ContextCancelation) {
+      ctx.log("warn", err.type, {
+        plugin: plugin.name,
+        error: err
+      });
+      return err;
+    }
+    ctx.log("error", "plugin Error", {
+      plugin: plugin.name,
+      error: err
+    });
+    ctx.stats.increment("plugin_error", 1, ["plugin:".concat(plugin.name)]);
+    return err;
+  });
+  return newCtx;
+}
+function ensure(ctx, plugin) {
+  return attempt(ctx, plugin).then(function(newContext) {
+    if (newContext instanceof CoreContext) {
+      return newContext;
+    }
+    ctx.log("debug", "Context canceled");
+    ctx.stats.increment("context_canceled");
+    ctx.cancel(newContext);
+  });
+}
+
+// node_modules/@segment/analytics-core/dist/esm/queue/event-queue.js
+var CoreEventQueue = (
+  /** @class */
+  (function(_super) {
+    __extends(CoreEventQueue2, _super);
+    function CoreEventQueue2(priorityQueue) {
+      var _this = _super.call(this) || this;
+      _this.criticalTasks = createTaskGroup();
+      _this.plugins = [];
+      _this.failedInitializations = [];
+      _this.flushing = false;
+      _this.queue = priorityQueue;
+      _this.queue.on(ON_REMOVE_FROM_FUTURE, function() {
+        _this.scheduleFlush(0);
+      });
+      return _this;
+    }
+    CoreEventQueue2.prototype.register = function(ctx, plugin, instance) {
+      return __awaiter(this, void 0, void 0, function() {
+        var handleLoadError, err_1;
+        var _this = this;
+        return __generator(this, function(_a) {
+          switch (_a.label) {
+            case 0:
+              this.plugins.push(plugin);
+              handleLoadError = function(err) {
+                _this.failedInitializations.push(plugin.name);
+                _this.emit("initialization_failure", plugin);
+                console.warn(plugin.name, err);
+                ctx.log("warn", "Failed to load destination", {
+                  plugin: plugin.name,
+                  error: err
+                });
+                _this.plugins = _this.plugins.filter(function(p) {
+                  return p !== plugin;
+                });
+              };
+              if (!(plugin.type === "destination" && plugin.name !== "Segment.io")) return [3, 1];
+              plugin.load(ctx, instance).catch(handleLoadError);
+              return [3, 4];
+            case 1:
+              _a.trys.push([1, 3, , 4]);
+              return [4, plugin.load(ctx, instance)];
+            case 2:
+              _a.sent();
+              return [3, 4];
+            case 3:
+              err_1 = _a.sent();
+              handleLoadError(err_1);
+              return [3, 4];
+            case 4:
+              return [
+                2
+                /*return*/
+              ];
+          }
+        });
+      });
+    };
+    CoreEventQueue2.prototype.deregister = function(ctx, plugin, instance) {
+      return __awaiter(this, void 0, void 0, function() {
+        var e_1;
+        return __generator(this, function(_a) {
+          switch (_a.label) {
+            case 0:
+              _a.trys.push([0, 3, , 4]);
+              if (!plugin.unload) return [3, 2];
+              return [4, Promise.resolve(plugin.unload(ctx, instance))];
+            case 1:
+              _a.sent();
+              _a.label = 2;
+            case 2:
+              this.plugins = this.plugins.filter(function(p) {
+                return p.name !== plugin.name;
+              });
+              return [3, 4];
+            case 3:
+              e_1 = _a.sent();
+              ctx.log("warn", "Failed to unload destination", {
+                plugin: plugin.name,
+                error: e_1
+              });
+              return [3, 4];
+            case 4:
+              return [
+                2
+                /*return*/
+              ];
+          }
+        });
+      });
+    };
+    CoreEventQueue2.prototype.dispatch = function(ctx) {
+      return __awaiter(this, void 0, void 0, function() {
+        var willDeliver;
+        return __generator(this, function(_a) {
+          ctx.log("debug", "Dispatching");
+          ctx.stats.increment("message_dispatched");
+          this.queue.push(ctx);
+          willDeliver = this.subscribeToDelivery(ctx);
+          this.scheduleFlush(0);
+          return [2, willDeliver];
+        });
+      });
+    };
+    CoreEventQueue2.prototype.subscribeToDelivery = function(ctx) {
+      return __awaiter(this, void 0, void 0, function() {
+        var _this = this;
+        return __generator(this, function(_a) {
+          return [2, new Promise(function(resolve) {
+            var onDeliver = function(flushed, delivered) {
+              if (flushed.isSame(ctx)) {
+                _this.off("flush", onDeliver);
+                if (delivered) {
+                  resolve(flushed);
+                } else {
+                  resolve(flushed);
+                }
+              }
+            };
+            _this.on("flush", onDeliver);
+          })];
+        });
+      });
+    };
+    CoreEventQueue2.prototype.dispatchSingle = function(ctx) {
+      return __awaiter(this, void 0, void 0, function() {
+        var _this = this;
+        return __generator(this, function(_a) {
+          ctx.log("debug", "Dispatching");
+          ctx.stats.increment("message_dispatched");
+          this.queue.updateAttempts(ctx);
+          ctx.attempts = 1;
+          return [2, this.deliver(ctx).catch(function(err) {
+            var accepted = _this.enqueuRetry(err, ctx);
+            if (!accepted) {
+              ctx.setFailedDelivery({ reason: err });
+              return ctx;
+            }
+            return _this.subscribeToDelivery(ctx);
+          })];
+        });
+      });
+    };
+    CoreEventQueue2.prototype.isEmpty = function() {
+      return this.queue.length === 0;
+    };
+    CoreEventQueue2.prototype.scheduleFlush = function(timeout) {
+      var _this = this;
+      if (timeout === void 0) {
+        timeout = 500;
+      }
+      if (this.flushing) {
+        return;
+      }
+      this.flushing = true;
+      setTimeout(function() {
+        _this.flush().then(function() {
+          setTimeout(function() {
+            _this.flushing = false;
+            if (_this.queue.length) {
+              _this.scheduleFlush(0);
+            }
+          }, 0);
+        });
+      }, timeout);
+    };
+    CoreEventQueue2.prototype.deliver = function(ctx) {
+      return __awaiter(this, void 0, void 0, function() {
+        var start, done, err_2, error;
+        return __generator(this, function(_a) {
+          switch (_a.label) {
+            case 0:
+              return [4, this.criticalTasks.done()];
+            case 1:
+              _a.sent();
+              start = Date.now();
+              _a.label = 2;
+            case 2:
+              _a.trys.push([2, 4, , 5]);
+              return [4, this.flushOne(ctx)];
+            case 3:
+              ctx = _a.sent();
+              done = Date.now() - start;
+              this.emit("delivery_success", ctx);
+              ctx.stats.gauge("delivered", done);
+              ctx.log("debug", "Delivered", ctx.event);
+              return [2, ctx];
+            case 4:
+              err_2 = _a.sent();
+              error = err_2;
+              ctx.log("error", "Failed to deliver", error);
+              this.emit("delivery_failure", ctx, error);
+              ctx.stats.increment("delivery_failed");
+              throw err_2;
+            case 5:
+              return [
+                2
+                /*return*/
+              ];
+          }
+        });
+      });
+    };
+    CoreEventQueue2.prototype.enqueuRetry = function(err, ctx) {
+      var retriable = !(err instanceof ContextCancelation) || err.retry;
+      if (!retriable) {
+        return false;
+      }
+      return this.queue.pushWithBackoff(ctx);
+    };
+    CoreEventQueue2.prototype.flush = function() {
+      return __awaiter(this, void 0, void 0, function() {
+        var ctx, err_3, accepted;
+        return __generator(this, function(_a) {
+          switch (_a.label) {
+            case 0:
+              if (this.queue.length === 0) {
+                return [2, []];
+              }
+              ctx = this.queue.pop();
+              if (!ctx) {
+                return [2, []];
+              }
+              ctx.attempts = this.queue.getAttempts(ctx);
+              _a.label = 1;
+            case 1:
+              _a.trys.push([1, 3, , 4]);
+              return [4, this.deliver(ctx)];
+            case 2:
+              ctx = _a.sent();
+              this.emit("flush", ctx, true);
+              return [3, 4];
+            case 3:
+              err_3 = _a.sent();
+              accepted = this.enqueuRetry(err_3, ctx);
+              if (!accepted) {
+                ctx.setFailedDelivery({ reason: err_3 });
+                this.emit("flush", ctx, false);
+              }
+              return [2, []];
+            case 4:
+              return [2, [ctx]];
+          }
+        });
+      });
+    };
+    CoreEventQueue2.prototype.isReady = function() {
+      return true;
+    };
+    CoreEventQueue2.prototype.availableExtensions = function(denyList) {
+      var available = this.plugins.filter(function(p) {
+        var _a2, _b2, _c2;
+        if (p.type !== "destination" && p.name !== "Segment.io") {
+          return true;
+        }
+        var alternativeNameMatch = void 0;
+        (_a2 = p.alternativeNames) === null || _a2 === void 0 ? void 0 : _a2.forEach(function(name) {
+          if (denyList[name] !== void 0) {
+            alternativeNameMatch = denyList[name];
+          }
+        });
+        return (_c2 = (_b2 = denyList[p.name]) !== null && _b2 !== void 0 ? _b2 : alternativeNameMatch) !== null && _c2 !== void 0 ? _c2 : (p.name === "Segment.io" ? true : denyList.All) !== false;
+      });
+      var _a = groupBy(available, "type"), _b = _a.before, before = _b === void 0 ? [] : _b, _c = _a.enrichment, enrichment = _c === void 0 ? [] : _c, _d = _a.destination, destination = _d === void 0 ? [] : _d, _e = _a.after, after = _e === void 0 ? [] : _e;
+      return {
+        before,
+        enrichment,
+        destinations: destination,
+        after
+      };
+    };
+    CoreEventQueue2.prototype.flushOne = function(ctx) {
+      var _a, _b;
+      return __awaiter(this, void 0, void 0, function() {
+        var _c, before, enrichment, _i, before_1, beforeWare, temp, _d, enrichment_1, enrichmentWare, temp, _e, destinations, after, afterCalls;
+        return __generator(this, function(_f) {
+          switch (_f.label) {
+            case 0:
+              if (!this.isReady()) {
+                throw new Error("Not ready");
+              }
+              if (ctx.attempts > 1) {
+                this.emit("delivery_retry", ctx);
+              }
+              _c = this.availableExtensions((_a = ctx.event.integrations) !== null && _a !== void 0 ? _a : {}), before = _c.before, enrichment = _c.enrichment;
+              _i = 0, before_1 = before;
+              _f.label = 1;
+            case 1:
+              if (!(_i < before_1.length)) return [3, 4];
+              beforeWare = before_1[_i];
+              return [4, ensure(ctx, beforeWare)];
+            case 2:
+              temp = _f.sent();
+              if (temp instanceof CoreContext) {
+                ctx = temp;
+              }
+              this.emit("message_enriched", ctx, beforeWare);
+              _f.label = 3;
+            case 3:
+              _i++;
+              return [3, 1];
+            case 4:
+              _d = 0, enrichment_1 = enrichment;
+              _f.label = 5;
+            case 5:
+              if (!(_d < enrichment_1.length)) return [3, 8];
+              enrichmentWare = enrichment_1[_d];
+              return [4, attempt(ctx, enrichmentWare)];
+            case 6:
+              temp = _f.sent();
+              if (temp instanceof CoreContext) {
+                ctx = temp;
+              }
+              this.emit("message_enriched", ctx, enrichmentWare);
+              _f.label = 7;
+            case 7:
+              _d++;
+              return [3, 5];
+            case 8:
+              _e = this.availableExtensions((_b = ctx.event.integrations) !== null && _b !== void 0 ? _b : {}), destinations = _e.destinations, after = _e.after;
+              return [4, new Promise(function(resolve, reject) {
+                setTimeout(function() {
+                  var attempts = destinations.map(function(destination) {
+                    return attempt(ctx, destination);
+                  });
+                  Promise.all(attempts).then(resolve).catch(reject);
+                }, 0);
+              })];
+            case 9:
+              _f.sent();
+              ctx.stats.increment("message_delivered");
+              this.emit("message_delivered", ctx);
+              afterCalls = after.map(function(after2) {
+                return attempt(ctx, after2);
+              });
+              return [4, Promise.all(afterCalls)];
+            case 10:
+              _f.sent();
+              return [2, ctx];
+          }
+        });
+      });
+    };
+    return CoreEventQueue2;
+  })(Emitter)
+);
+
+// node_modules/@segment/analytics-core/dist/esm/analytics/dispatch.js
+var getDelay = function(startTimeInEpochMS, timeoutInMS) {
+  var elapsedTime = Date.now() - startTimeInEpochMS;
+  return Math.max((timeoutInMS !== null && timeoutInMS !== void 0 ? timeoutInMS : 300) - elapsedTime, 0);
+};
+function dispatch(ctx, queue, emitter, options) {
+  return __awaiter(this, void 0, void 0, function() {
+    var startTime, dispatched;
+    return __generator(this, function(_a) {
+      switch (_a.label) {
+        case 0:
+          emitter.emit("dispatch_start", ctx);
+          startTime = Date.now();
+          if (!queue.isEmpty()) return [3, 2];
+          return [4, queue.dispatchSingle(ctx)];
+        case 1:
+          dispatched = _a.sent();
+          return [3, 4];
+        case 2:
+          return [4, queue.dispatch(ctx)];
+        case 3:
+          dispatched = _a.sent();
+          _a.label = 4;
+        case 4:
+          if (!(options === null || options === void 0 ? void 0 : options.callback)) return [3, 6];
+          return [4, invokeCallback(dispatched, options.callback, getDelay(startTime, options.timeout))];
+        case 5:
+          dispatched = _a.sent();
+          _a.label = 6;
+        case 6:
+          if (options === null || options === void 0 ? void 0 : options.debug) {
+            dispatched.flush();
+          }
+          return [2, dispatched];
+      }
+    });
+  });
+}
+
+// node_modules/@segment/analytics-core/dist/esm/utils/bind-all.js
+function bindAll(obj) {
+  var proto = obj.constructor.prototype;
+  for (var _i = 0, _a = Object.getOwnPropertyNames(proto); _i < _a.length; _i++) {
+    var key = _a[_i];
+    if (key !== "constructor") {
+      var desc = Object.getOwnPropertyDescriptor(obj.constructor.prototype, key);
+      if (!!desc && typeof desc.value === "function") {
+        obj[key] = obj[key].bind(obj);
+      }
+    }
+  }
+  return obj;
+}
+
+// node_modules/@segment/analytics-node/dist/esm/app/settings.js
+var validateSettings = (settings) => {
+  if (!settings.writeKey) {
+    throw new ValidationError("writeKey", "writeKey is missing.");
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/generated/version.js
+var version = "3.0.0";
+
+// node_modules/@segment/analytics-node/dist/esm/lib/create-url.js
+var stripTrailingSlash = (str) => str.replace(/\/$/, "");
+var tryCreateFormattedUrl = (host, path) => {
+  return stripTrailingSlash(new URL(path || "", host).href);
+};
+
+// node_modules/@segment/analytics-node/dist/esm/plugins/segmentio/context-batch.js
+var MAX_EVENT_SIZE_IN_KB = 32;
+var MAX_BATCH_SIZE_IN_KB = 480;
+var ContextBatch = class {
+  id = v4();
+  items = [];
+  sizeInBytes = 0;
+  maxEventCount;
+  constructor(maxEventCount) {
+    this.maxEventCount = Math.max(1, maxEventCount);
+  }
+  tryAdd(item) {
+    if (this.length === this.maxEventCount)
+      return {
+        success: false,
+        message: `Event limit of ${this.maxEventCount} has been exceeded.`
+      };
+    const eventSize = this.calculateSize(item.context);
+    if (eventSize > MAX_EVENT_SIZE_IN_KB * 1024) {
+      return {
+        success: false,
+        message: `Event exceeds maximum event size of ${MAX_EVENT_SIZE_IN_KB} KB`
+      };
+    }
+    if (this.sizeInBytes + eventSize > MAX_BATCH_SIZE_IN_KB * 1024) {
+      return {
+        success: false,
+        message: `Event has caused batch size to exceed ${MAX_BATCH_SIZE_IN_KB} KB`
+      };
+    }
+    this.items.push(item);
+    this.sizeInBytes += eventSize;
+    return { success: true };
+  }
+  get length() {
+    return this.items.length;
+  }
+  calculateSize(ctx) {
+    return encodeURI(JSON.stringify(ctx.event)).split(/%..|i/).length;
+  }
+  getEvents() {
+    const events = this.items.map(({ context }) => context.event);
+    return events;
+  }
+  getContexts() {
+    return this.items.map((item) => item.context);
+  }
+  resolveEvents() {
+    this.items.forEach(({ resolver, context }) => resolver(context));
+  }
+};
+
+// node_modules/jose/dist/node/esm/lib/buffer_utils.js
+var encoder = new TextEncoder();
+var decoder = new TextDecoder();
+function concat(...buffers) {
+  const size = buffers.reduce((acc, { length }) => acc + length, 0);
+  const buf = new Uint8Array(size);
+  let i = 0;
+  for (const buffer of buffers) {
+    buf.set(buffer, i);
+    i += buffer.length;
+  }
+  return buf;
+}
+
+// node_modules/jose/dist/node/esm/runtime/base64url.js
+var encode = (input) => Buffer$1.from(input).toString("base64url");
+
+// node_modules/jose/dist/node/esm/util/errors.js
+var JOSEError = class extends Error {
+  static code = "ERR_JOSE_GENERIC";
+  code = "ERR_JOSE_GENERIC";
+  constructor(message2, options) {
+    super(message2, options);
+    this.name = this.constructor.name;
+    Error.captureStackTrace?.(this, this.constructor);
+  }
+};
+var JOSENotSupported = class extends JOSEError {
+  static code = "ERR_JOSE_NOT_SUPPORTED";
+  code = "ERR_JOSE_NOT_SUPPORTED";
+};
+var JWSInvalid = class extends JOSEError {
+  static code = "ERR_JWS_INVALID";
+  code = "ERR_JWS_INVALID";
+};
+var JWTInvalid = class extends JOSEError {
+  static code = "ERR_JWT_INVALID";
+  code = "ERR_JWT_INVALID";
+};
+var is_key_object_default = (obj) => util.types.isKeyObject(obj);
+var webcrypto2 = crypto2.webcrypto;
+var webcrypto_default = webcrypto2;
+var isCryptoKey = (key) => util.types.isCryptoKey(key);
+
+// node_modules/jose/dist/node/esm/lib/crypto_key.js
+function unusable(name, prop = "algorithm.name") {
+  return new TypeError(`CryptoKey does not support this operation, its ${prop} must be ${name}`);
+}
+function isAlgorithm(algorithm, name) {
+  return algorithm.name === name;
+}
+function getHashLength(hash) {
+  return parseInt(hash.name.slice(4), 10);
+}
+function getNamedCurve(alg) {
+  switch (alg) {
+    case "ES256":
+      return "P-256";
+    case "ES384":
+      return "P-384";
+    case "ES512":
+      return "P-521";
+    default:
+      throw new Error("unreachable");
+  }
+}
+function checkUsage(key, usages) {
+  if (usages.length && !usages.some((expected) => key.usages.includes(expected))) {
+    let msg = "CryptoKey does not support this operation, its usages must include ";
+    if (usages.length > 2) {
+      const last = usages.pop();
+      msg += `one of ${usages.join(", ")}, or ${last}.`;
+    } else if (usages.length === 2) {
+      msg += `one of ${usages[0]} or ${usages[1]}.`;
+    } else {
+      msg += `${usages[0]}.`;
+    }
+    throw new TypeError(msg);
+  }
+}
+function checkSigCryptoKey(key, alg, ...usages) {
+  switch (alg) {
+    case "HS256":
+    case "HS384":
+    case "HS512": {
+      if (!isAlgorithm(key.algorithm, "HMAC"))
+        throw unusable("HMAC");
+      const expected = parseInt(alg.slice(2), 10);
+      const actual = getHashLength(key.algorithm.hash);
+      if (actual !== expected)
+        throw unusable(`SHA-${expected}`, "algorithm.hash");
+      break;
+    }
+    case "RS256":
+    case "RS384":
+    case "RS512": {
+      if (!isAlgorithm(key.algorithm, "RSASSA-PKCS1-v1_5"))
+        throw unusable("RSASSA-PKCS1-v1_5");
+      const expected = parseInt(alg.slice(2), 10);
+      const actual = getHashLength(key.algorithm.hash);
+      if (actual !== expected)
+        throw unusable(`SHA-${expected}`, "algorithm.hash");
+      break;
+    }
+    case "PS256":
+    case "PS384":
+    case "PS512": {
+      if (!isAlgorithm(key.algorithm, "RSA-PSS"))
+        throw unusable("RSA-PSS");
+      const expected = parseInt(alg.slice(2), 10);
+      const actual = getHashLength(key.algorithm.hash);
+      if (actual !== expected)
+        throw unusable(`SHA-${expected}`, "algorithm.hash");
+      break;
+    }
+    case "EdDSA": {
+      if (key.algorithm.name !== "Ed25519" && key.algorithm.name !== "Ed448") {
+        throw unusable("Ed25519 or Ed448");
+      }
+      break;
+    }
+    case "Ed25519": {
+      if (!isAlgorithm(key.algorithm, "Ed25519"))
+        throw unusable("Ed25519");
+      break;
+    }
+    case "ES256":
+    case "ES384":
+    case "ES512": {
+      if (!isAlgorithm(key.algorithm, "ECDSA"))
+        throw unusable("ECDSA");
+      const expected = getNamedCurve(alg);
+      const actual = key.algorithm.namedCurve;
+      if (actual !== expected)
+        throw unusable(expected, "algorithm.namedCurve");
+      break;
+    }
+    default:
+      throw new TypeError("CryptoKey does not support this operation");
+  }
+  checkUsage(key, usages);
+}
+
+// node_modules/jose/dist/node/esm/lib/invalid_key_input.js
+function message(msg, actual, ...types4) {
+  types4 = types4.filter(Boolean);
+  if (types4.length > 2) {
+    const last = types4.pop();
+    msg += `one of type ${types4.join(", ")}, or ${last}.`;
+  } else if (types4.length === 2) {
+    msg += `one of type ${types4[0]} or ${types4[1]}.`;
+  } else {
+    msg += `of type ${types4[0]}.`;
+  }
+  if (actual == null) {
+    msg += ` Received ${actual}`;
+  } else if (typeof actual === "function" && actual.name) {
+    msg += ` Received function ${actual.name}`;
+  } else if (typeof actual === "object" && actual != null) {
+    if (actual.constructor?.name) {
+      msg += ` Received an instance of ${actual.constructor.name}`;
+    }
+  }
+  return msg;
+}
+var invalid_key_input_default = (actual, ...types4) => {
+  return message("Key must be ", actual, ...types4);
+};
+function withAlg(alg, actual, ...types4) {
+  return message(`Key for the ${alg} algorithm must be `, actual, ...types4);
+}
+
+// node_modules/jose/dist/node/esm/runtime/is_key_like.js
+var is_key_like_default = (key) => is_key_object_default(key) || isCryptoKey(key);
+var types3 = ["KeyObject"];
+if (globalThis.CryptoKey || webcrypto_default?.CryptoKey) {
+  types3.push("CryptoKey");
+}
+
+// node_modules/jose/dist/node/esm/lib/is_disjoint.js
+var isDisjoint = (...headers) => {
+  const sources = headers.filter(Boolean);
+  if (sources.length === 0 || sources.length === 1) {
+    return true;
+  }
+  let acc;
+  for (const header of sources) {
+    const parameters = Object.keys(header);
+    if (!acc || acc.size === 0) {
+      acc = new Set(parameters);
+      continue;
+    }
+    for (const parameter of parameters) {
+      if (acc.has(parameter)) {
+        return false;
+      }
+      acc.add(parameter);
+    }
+  }
+  return true;
+};
+var is_disjoint_default = isDisjoint;
+
+// node_modules/jose/dist/node/esm/lib/is_object.js
+function isObjectLike(value) {
+  return typeof value === "object" && value !== null;
+}
+function isObject(input) {
+  if (!isObjectLike(input) || Object.prototype.toString.call(input) !== "[object Object]") {
+    return false;
+  }
+  if (Object.getPrototypeOf(input) === null) {
+    return true;
+  }
+  let proto = input;
+  while (Object.getPrototypeOf(proto) !== null) {
+    proto = Object.getPrototypeOf(proto);
+  }
+  return Object.getPrototypeOf(input) === proto;
+}
+
+// node_modules/jose/dist/node/esm/lib/is_jwk.js
+function isJWK(key) {
+  return isObject(key) && typeof key.kty === "string";
+}
+function isPrivateJWK(key) {
+  return key.kty !== "oct" && typeof key.d === "string";
+}
+function isPublicJWK(key) {
+  return key.kty !== "oct" && typeof key.d === "undefined";
+}
+function isSecretJWK(key) {
+  return isJWK(key) && key.kty === "oct" && typeof key.k === "string";
+}
+
+// node_modules/jose/dist/node/esm/runtime/get_named_curve.js
+var namedCurveToJOSE = (namedCurve) => {
+  switch (namedCurve) {
+    case "prime256v1":
+      return "P-256";
+    case "secp384r1":
+      return "P-384";
+    case "secp521r1":
+      return "P-521";
+    case "secp256k1":
+      return "secp256k1";
+    default:
+      throw new JOSENotSupported("Unsupported key curve for this operation");
+  }
+};
+var getNamedCurve2 = (kee, raw) => {
+  let key;
+  if (isCryptoKey(kee)) {
+    key = KeyObject.from(kee);
+  } else if (is_key_object_default(kee)) {
+    key = kee;
+  } else if (isJWK(kee)) {
+    return kee.crv;
+  } else {
+    throw new TypeError(invalid_key_input_default(kee, ...types3));
+  }
+  if (key.type === "secret") {
+    throw new TypeError('only "private" or "public" type keys can be used for this operation');
+  }
+  switch (key.asymmetricKeyType) {
+    case "ed25519":
+    case "ed448":
+      return `Ed${key.asymmetricKeyType.slice(2)}`;
+    case "x25519":
+    case "x448":
+      return `X${key.asymmetricKeyType.slice(1)}`;
+    case "ec": {
+      const namedCurve = key.asymmetricKeyDetails.namedCurve;
+      if (raw) {
+        return namedCurve;
+      }
+      return namedCurveToJOSE(namedCurve);
+    }
+    default:
+      throw new TypeError("Invalid asymmetric key type for this operation");
+  }
+};
+var get_named_curve_default = getNamedCurve2;
+var check_key_length_default = (key, alg) => {
+  let modulusLength;
+  try {
+    if (key instanceof KeyObject) {
+      modulusLength = key.asymmetricKeyDetails?.modulusLength;
+    } else {
+      modulusLength = Buffer.from(key.n, "base64url").byteLength << 3;
+    }
+  } catch {
+  }
+  if (typeof modulusLength !== "number" || modulusLength < 2048) {
+    throw new TypeError(`${alg} requires key modulusLength to be 2048 bits or larger`);
+  }
+};
+var fromPKCS8 = (pem) => createPrivateKey({
+  key: Buffer$1.from(pem.replace(/(?:-----(?:BEGIN|END) PRIVATE KEY-----|\s)/g, ""), "base64"),
+  type: "pkcs8",
+  format: "der"
+});
+
+// node_modules/jose/dist/node/esm/key/import.js
+async function importPKCS8(pkcs8, alg, options) {
+  if (typeof pkcs8 !== "string" || pkcs8.indexOf("-----BEGIN PRIVATE KEY-----") !== 0) {
+    throw new TypeError('"pkcs8" must be PKCS#8 formatted string');
+  }
+  return fromPKCS8(pkcs8);
+}
+
+// node_modules/jose/dist/node/esm/lib/check_key_type.js
+var tag = (key) => key?.[Symbol.toStringTag];
+var jwkMatchesOp = (alg, key, usage) => {
+  if (key.use !== void 0 && key.use !== "sig") {
+    throw new TypeError("Invalid key for this operation, when present its use must be sig");
+  }
+  if (key.key_ops !== void 0 && key.key_ops.includes?.(usage) !== true) {
+    throw new TypeError(`Invalid key for this operation, when present its key_ops must include ${usage}`);
+  }
+  if (key.alg !== void 0 && key.alg !== alg) {
+    throw new TypeError(`Invalid key for this operation, when present its alg must be ${alg}`);
+  }
+  return true;
+};
+var symmetricTypeCheck = (alg, key, usage, allowJwk) => {
+  if (key instanceof Uint8Array)
+    return;
+  if (allowJwk && isJWK(key)) {
+    if (isSecretJWK(key) && jwkMatchesOp(alg, key, usage))
+      return;
+    throw new TypeError(`JSON Web Key for symmetric algorithms must have JWK "kty" (Key Type) equal to "oct" and the JWK "k" (Key Value) present`);
+  }
+  if (!is_key_like_default(key)) {
+    throw new TypeError(withAlg(alg, key, ...types3, "Uint8Array", allowJwk ? "JSON Web Key" : null));
+  }
+  if (key.type !== "secret") {
+    throw new TypeError(`${tag(key)} instances for symmetric algorithms must be of type "secret"`);
+  }
+};
+var asymmetricTypeCheck = (alg, key, usage, allowJwk) => {
+  if (allowJwk && isJWK(key)) {
+    switch (usage) {
+      case "sign":
+        if (isPrivateJWK(key) && jwkMatchesOp(alg, key, usage))
+          return;
+        throw new TypeError(`JSON Web Key for this operation be a private JWK`);
+      case "verify":
+        if (isPublicJWK(key) && jwkMatchesOp(alg, key, usage))
+          return;
+        throw new TypeError(`JSON Web Key for this operation be a public JWK`);
+    }
+  }
+  if (!is_key_like_default(key)) {
+    throw new TypeError(withAlg(alg, key, ...types3, allowJwk ? "JSON Web Key" : null));
+  }
+  if (key.type === "secret") {
+    throw new TypeError(`${tag(key)} instances for asymmetric algorithms must not be of type "secret"`);
+  }
+  if (usage === "sign" && key.type === "public") {
+    throw new TypeError(`${tag(key)} instances for asymmetric algorithm signing must be of type "private"`);
+  }
+  if (usage === "decrypt" && key.type === "public") {
+    throw new TypeError(`${tag(key)} instances for asymmetric algorithm decryption must be of type "private"`);
+  }
+  if (key.algorithm && usage === "verify" && key.type === "private") {
+    throw new TypeError(`${tag(key)} instances for asymmetric algorithm verifying must be of type "public"`);
+  }
+  if (key.algorithm && usage === "encrypt" && key.type === "private") {
+    throw new TypeError(`${tag(key)} instances for asymmetric algorithm encryption must be of type "public"`);
+  }
+};
+function checkKeyType(allowJwk, alg, key, usage) {
+  const symmetric = alg.startsWith("HS") || alg === "dir" || alg.startsWith("PBES2") || /^A\d{3}(?:GCM)?KW$/.test(alg);
+  if (symmetric) {
+    symmetricTypeCheck(alg, key, usage, allowJwk);
+  } else {
+    asymmetricTypeCheck(alg, key, usage, allowJwk);
+  }
+}
+checkKeyType.bind(void 0, false);
+var checkKeyTypeWithJwk = checkKeyType.bind(void 0, true);
+
+// node_modules/jose/dist/node/esm/lib/validate_crit.js
+function validateCrit(Err, recognizedDefault, recognizedOption, protectedHeader, joseHeader) {
+  if (joseHeader.crit !== void 0 && protectedHeader?.crit === void 0) {
+    throw new Err('"crit" (Critical) Header Parameter MUST be integrity protected');
+  }
+  if (!protectedHeader || protectedHeader.crit === void 0) {
+    return /* @__PURE__ */ new Set();
+  }
+  if (!Array.isArray(protectedHeader.crit) || protectedHeader.crit.length === 0 || protectedHeader.crit.some((input) => typeof input !== "string" || input.length === 0)) {
+    throw new Err('"crit" (Critical) Header Parameter MUST be an array of non-empty strings when present');
+  }
+  let recognized;
+  if (recognizedOption !== void 0) {
+    recognized = new Map([...Object.entries(recognizedOption), ...recognizedDefault.entries()]);
+  } else {
+    recognized = recognizedDefault;
+  }
+  for (const parameter of protectedHeader.crit) {
+    if (!recognized.has(parameter)) {
+      throw new JOSENotSupported(`Extension Header Parameter "${parameter}" is not recognized`);
+    }
+    if (joseHeader[parameter] === void 0) {
+      throw new Err(`Extension Header Parameter "${parameter}" is missing`);
+    }
+    if (recognized.get(parameter) && protectedHeader[parameter] === void 0) {
+      throw new Err(`Extension Header Parameter "${parameter}" MUST be integrity protected`);
+    }
+  }
+  return new Set(protectedHeader.crit);
+}
+var validate_crit_default = validateCrit;
+
+// node_modules/jose/dist/node/esm/runtime/dsa_digest.js
+function dsaDigest(alg) {
+  switch (alg) {
+    case "PS256":
+    case "RS256":
+    case "ES256":
+    case "ES256K":
+      return "sha256";
+    case "PS384":
+    case "RS384":
+    case "ES384":
+      return "sha384";
+    case "PS512":
+    case "RS512":
+    case "ES512":
+      return "sha512";
+    case "Ed25519":
+    case "EdDSA":
+      return void 0;
+    default:
+      throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+  }
+}
+var ecCurveAlgMap = /* @__PURE__ */ new Map([
+  ["ES256", "P-256"],
+  ["ES256K", "secp256k1"],
+  ["ES384", "P-384"],
+  ["ES512", "P-521"]
+]);
+function keyForCrypto(alg, key) {
+  let asymmetricKeyType;
+  let asymmetricKeyDetails;
+  let isJWK2;
+  if (key instanceof KeyObject) {
+    asymmetricKeyType = key.asymmetricKeyType;
+    asymmetricKeyDetails = key.asymmetricKeyDetails;
+  } else {
+    isJWK2 = true;
+    switch (key.kty) {
+      case "RSA":
+        asymmetricKeyType = "rsa";
+        break;
+      case "EC":
+        asymmetricKeyType = "ec";
+        break;
+      case "OKP": {
+        if (key.crv === "Ed25519") {
+          asymmetricKeyType = "ed25519";
+          break;
+        }
+        if (key.crv === "Ed448") {
+          asymmetricKeyType = "ed448";
+          break;
+        }
+        throw new TypeError("Invalid key for this operation, its crv must be Ed25519 or Ed448");
+      }
+      default:
+        throw new TypeError("Invalid key for this operation, its kty must be RSA, OKP, or EC");
+    }
+  }
+  let options;
+  switch (alg) {
+    case "Ed25519":
+      if (asymmetricKeyType !== "ed25519") {
+        throw new TypeError(`Invalid key for this operation, its asymmetricKeyType must be ed25519`);
+      }
+      break;
+    case "EdDSA":
+      if (!["ed25519", "ed448"].includes(asymmetricKeyType)) {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be ed25519 or ed448");
+      }
+      break;
+    case "RS256":
+    case "RS384":
+    case "RS512":
+      if (asymmetricKeyType !== "rsa") {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be rsa");
+      }
+      check_key_length_default(key, alg);
+      break;
+    case "PS256":
+    case "PS384":
+    case "PS512":
+      if (asymmetricKeyType === "rsa-pss") {
+        const { hashAlgorithm, mgf1HashAlgorithm, saltLength } = asymmetricKeyDetails;
+        const length = parseInt(alg.slice(-3), 10);
+        if (hashAlgorithm !== void 0 && (hashAlgorithm !== `sha${length}` || mgf1HashAlgorithm !== hashAlgorithm)) {
+          throw new TypeError(`Invalid key for this operation, its RSA-PSS parameters do not meet the requirements of "alg" ${alg}`);
+        }
+        if (saltLength !== void 0 && saltLength > length >> 3) {
+          throw new TypeError(`Invalid key for this operation, its RSA-PSS parameter saltLength does not meet the requirements of "alg" ${alg}`);
+        }
+      } else if (asymmetricKeyType !== "rsa") {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be rsa or rsa-pss");
+      }
+      check_key_length_default(key, alg);
+      options = {
+        padding: constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: constants.RSA_PSS_SALTLEN_DIGEST
+      };
+      break;
+    case "ES256":
+    case "ES256K":
+    case "ES384":
+    case "ES512": {
+      if (asymmetricKeyType !== "ec") {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be ec");
+      }
+      const actual = get_named_curve_default(key);
+      const expected = ecCurveAlgMap.get(alg);
+      if (actual !== expected) {
+        throw new TypeError(`Invalid key curve for the algorithm, its curve must be ${expected}, got ${actual}`);
+      }
+      options = { dsaEncoding: "ieee-p1363" };
+      break;
+    }
+    default:
+      throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+  }
+  if (isJWK2) {
+    return { format: "jwk", key, ...options };
+  }
+  return options ? { ...options, key } : key;
+}
+
+// node_modules/jose/dist/node/esm/runtime/hmac_digest.js
+function hmacDigest(alg) {
+  switch (alg) {
+    case "HS256":
+      return "sha256";
+    case "HS384":
+      return "sha384";
+    case "HS512":
+      return "sha512";
+    default:
+      throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+  }
+}
+function getSignVerifyKey(alg, key, usage) {
+  if (key instanceof Uint8Array) {
+    if (!alg.startsWith("HS")) {
+      throw new TypeError(invalid_key_input_default(key, ...types3));
+    }
+    return createSecretKey(key);
+  }
+  if (key instanceof KeyObject) {
+    return key;
+  }
+  if (isCryptoKey(key)) {
+    checkSigCryptoKey(key, alg, usage);
+    return KeyObject.from(key);
+  }
+  if (isJWK(key)) {
+    if (alg.startsWith("HS")) {
+      return createSecretKey(Buffer.from(key.k, "base64url"));
+    }
+    return key;
+  }
+  throw new TypeError(invalid_key_input_default(key, ...types3, "Uint8Array", "JSON Web Key"));
+}
+
+// node_modules/jose/dist/node/esm/runtime/sign.js
+var oneShotSign = promisify(crypto2.sign);
+var sign2 = async (alg, key, data) => {
+  const k = getSignVerifyKey(alg, key, "sign");
+  if (alg.startsWith("HS")) {
+    const hmac = crypto2.createHmac(hmacDigest(alg), k);
+    hmac.update(data);
+    return hmac.digest();
+  }
+  return oneShotSign(dsaDigest(alg), data, keyForCrypto(alg, k));
+};
+var sign_default = sign2;
+
+// node_modules/jose/dist/node/esm/lib/epoch.js
+var epoch_default = (date) => Math.floor(date.getTime() / 1e3);
+
+// node_modules/jose/dist/node/esm/lib/secs.js
+var minute = 60;
+var hour = minute * 60;
+var day = hour * 24;
+var week = day * 7;
+var year = day * 365.25;
+var REGEX = /^(\+|\-)? ?(\d+|\d+\.\d+) ?(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)(?: (ago|from now))?$/i;
+var secs_default = (str) => {
+  const matched = REGEX.exec(str);
+  if (!matched || matched[4] && matched[1]) {
+    throw new TypeError("Invalid time period format");
+  }
+  const value = parseFloat(matched[2]);
+  const unit = matched[3].toLowerCase();
+  let numericDate;
+  switch (unit) {
+    case "sec":
+    case "secs":
+    case "second":
+    case "seconds":
+    case "s":
+      numericDate = Math.round(value);
+      break;
+    case "minute":
+    case "minutes":
+    case "min":
+    case "mins":
+    case "m":
+      numericDate = Math.round(value * minute);
+      break;
+    case "hour":
+    case "hours":
+    case "hr":
+    case "hrs":
+    case "h":
+      numericDate = Math.round(value * hour);
+      break;
+    case "day":
+    case "days":
+    case "d":
+      numericDate = Math.round(value * day);
+      break;
+    case "week":
+    case "weeks":
+    case "w":
+      numericDate = Math.round(value * week);
+      break;
+    default:
+      numericDate = Math.round(value * year);
+      break;
+  }
+  if (matched[1] === "-" || matched[4] === "ago") {
+    return -numericDate;
+  }
+  return numericDate;
+};
+
+// node_modules/jose/dist/node/esm/jws/flattened/sign.js
+var FlattenedSign = class {
+  _payload;
+  _protectedHeader;
+  _unprotectedHeader;
+  constructor(payload) {
+    if (!(payload instanceof Uint8Array)) {
+      throw new TypeError("payload must be an instance of Uint8Array");
+    }
+    this._payload = payload;
+  }
+  setProtectedHeader(protectedHeader) {
+    if (this._protectedHeader) {
+      throw new TypeError("setProtectedHeader can only be called once");
+    }
+    this._protectedHeader = protectedHeader;
+    return this;
+  }
+  setUnprotectedHeader(unprotectedHeader) {
+    if (this._unprotectedHeader) {
+      throw new TypeError("setUnprotectedHeader can only be called once");
+    }
+    this._unprotectedHeader = unprotectedHeader;
+    return this;
+  }
+  async sign(key, options) {
+    if (!this._protectedHeader && !this._unprotectedHeader) {
+      throw new JWSInvalid("either setProtectedHeader or setUnprotectedHeader must be called before #sign()");
+    }
+    if (!is_disjoint_default(this._protectedHeader, this._unprotectedHeader)) {
+      throw new JWSInvalid("JWS Protected and JWS Unprotected Header Parameter names must be disjoint");
+    }
+    const joseHeader = {
+      ...this._protectedHeader,
+      ...this._unprotectedHeader
+    };
+    const extensions = validate_crit_default(JWSInvalid, /* @__PURE__ */ new Map([["b64", true]]), options?.crit, this._protectedHeader, joseHeader);
+    let b64 = true;
+    if (extensions.has("b64")) {
+      b64 = this._protectedHeader.b64;
+      if (typeof b64 !== "boolean") {
+        throw new JWSInvalid('The "b64" (base64url-encode payload) Header Parameter must be a boolean');
+      }
+    }
+    const { alg } = joseHeader;
+    if (typeof alg !== "string" || !alg) {
+      throw new JWSInvalid('JWS "alg" (Algorithm) Header Parameter missing or invalid');
+    }
+    checkKeyTypeWithJwk(alg, key, "sign");
+    let payload = this._payload;
+    if (b64) {
+      payload = encoder.encode(encode(payload));
+    }
+    let protectedHeader;
+    if (this._protectedHeader) {
+      protectedHeader = encoder.encode(encode(JSON.stringify(this._protectedHeader)));
+    } else {
+      protectedHeader = encoder.encode("");
+    }
+    const data = concat(protectedHeader, encoder.encode("."), payload);
+    const signature = await sign_default(alg, key, data);
+    const jws = {
+      signature: encode(signature),
+      payload: ""
+    };
+    if (b64) {
+      jws.payload = decoder.decode(payload);
+    }
+    if (this._unprotectedHeader) {
+      jws.header = this._unprotectedHeader;
+    }
+    if (this._protectedHeader) {
+      jws.protected = decoder.decode(protectedHeader);
+    }
+    return jws;
+  }
+};
+
+// node_modules/jose/dist/node/esm/jws/compact/sign.js
+var CompactSign = class {
+  _flattened;
+  constructor(payload) {
+    this._flattened = new FlattenedSign(payload);
+  }
+  setProtectedHeader(protectedHeader) {
+    this._flattened.setProtectedHeader(protectedHeader);
+    return this;
+  }
+  async sign(key, options) {
+    const jws = await this._flattened.sign(key, options);
+    if (jws.payload === void 0) {
+      throw new TypeError("use the flattened module for creating JWS with b64: false");
+    }
+    return `${jws.protected}.${jws.payload}.${jws.signature}`;
+  }
+};
+
+// node_modules/jose/dist/node/esm/jwt/produce.js
+function validateInput(label, input) {
+  if (!Number.isFinite(input)) {
+    throw new TypeError(`Invalid ${label} input`);
+  }
+  return input;
+}
+var ProduceJWT = class {
+  _payload;
+  constructor(payload = {}) {
+    if (!isObject(payload)) {
+      throw new TypeError("JWT Claims Set MUST be an object");
+    }
+    this._payload = payload;
+  }
+  setIssuer(issuer) {
+    this._payload = { ...this._payload, iss: issuer };
+    return this;
+  }
+  setSubject(subject) {
+    this._payload = { ...this._payload, sub: subject };
+    return this;
+  }
+  setAudience(audience) {
+    this._payload = { ...this._payload, aud: audience };
+    return this;
+  }
+  setJti(jwtId) {
+    this._payload = { ...this._payload, jti: jwtId };
+    return this;
+  }
+  setNotBefore(input) {
+    if (typeof input === "number") {
+      this._payload = { ...this._payload, nbf: validateInput("setNotBefore", input) };
+    } else if (input instanceof Date) {
+      this._payload = { ...this._payload, nbf: validateInput("setNotBefore", epoch_default(input)) };
+    } else {
+      this._payload = { ...this._payload, nbf: epoch_default(/* @__PURE__ */ new Date()) + secs_default(input) };
+    }
+    return this;
+  }
+  setExpirationTime(input) {
+    if (typeof input === "number") {
+      this._payload = { ...this._payload, exp: validateInput("setExpirationTime", input) };
+    } else if (input instanceof Date) {
+      this._payload = { ...this._payload, exp: validateInput("setExpirationTime", epoch_default(input)) };
+    } else {
+      this._payload = { ...this._payload, exp: epoch_default(/* @__PURE__ */ new Date()) + secs_default(input) };
+    }
+    return this;
+  }
+  setIssuedAt(input) {
+    if (typeof input === "undefined") {
+      this._payload = { ...this._payload, iat: epoch_default(/* @__PURE__ */ new Date()) };
+    } else if (input instanceof Date) {
+      this._payload = { ...this._payload, iat: validateInput("setIssuedAt", epoch_default(input)) };
+    } else if (typeof input === "string") {
+      this._payload = {
+        ...this._payload,
+        iat: validateInput("setIssuedAt", epoch_default(/* @__PURE__ */ new Date()) + secs_default(input))
+      };
+    } else {
+      this._payload = { ...this._payload, iat: validateInput("setIssuedAt", input) };
+    }
+    return this;
+  }
+};
+
+// node_modules/jose/dist/node/esm/jwt/sign.js
+var SignJWT = class extends ProduceJWT {
+  _protectedHeader;
+  setProtectedHeader(protectedHeader) {
+    this._protectedHeader = protectedHeader;
+    return this;
+  }
+  async sign(key, options) {
+    const sig = new CompactSign(encoder.encode(JSON.stringify(this._payload)));
+    sig.setProtectedHeader(this._protectedHeader);
+    if (Array.isArray(this._protectedHeader?.crit) && this._protectedHeader.crit.includes("b64") && this._protectedHeader.b64 === false) {
+      throw new JWTInvalid("JWTs MUST NOT use unencoded payload");
+    }
+    return sig.sign(key, options);
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/lib/token-manager.js
+var isAccessToken = (thing) => {
+  return Boolean(thing && typeof thing === "object" && "access_token" in thing && "expires_in" in thing && typeof thing.access_token === "string" && typeof thing.expires_in === "number");
+};
+var isValidCustomResponse = (response) => {
+  return typeof response.text === "function";
+};
+function convertHeaders(headers) {
+  const lowercaseHeaders = {};
+  if (!headers)
+    return {};
+  if (isHeaders(headers)) {
+    for (const [name, value] of headers.entries()) {
+      lowercaseHeaders[name.toLowerCase()] = value;
+    }
+    return lowercaseHeaders;
+  }
+  for (const [name, value] of Object.entries(headers)) {
+    lowercaseHeaders[name.toLowerCase()] = value;
+  }
+  return lowercaseHeaders;
+}
+function isHeaders(thing) {
+  if (typeof thing === "object" && thing !== null && "entries" in Object(thing) && typeof Object(thing).entries === "function") {
+    return true;
+  }
+  return false;
+}
+var TokenManager = class {
+  alg = "RS256";
+  grantType = "client_credentials";
+  clientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+  clientId;
+  clientKey;
+  keyId;
+  scope;
+  authServer;
+  httpClient;
+  maxRetries;
+  clockSkewInSeconds = 0;
+  accessToken;
+  tokenEmitter = new Emitter();
+  retryCount;
+  pollerTimer;
+  constructor(props) {
+    this.keyId = props.keyId;
+    this.clientId = props.clientId;
+    this.clientKey = props.clientKey;
+    this.authServer = props.authServer ?? "https://oauth2.segment.io";
+    this.scope = props.scope ?? "tracking_api:write";
+    this.httpClient = props.httpClient;
+    this.maxRetries = props.maxRetries;
+    this.tokenEmitter.on("access_token", (event) => {
+      if ("token" in event) {
+        this.accessToken = event.token;
+      }
+    });
+    this.retryCount = 0;
+  }
+  stopPoller() {
+    clearTimeout(this.pollerTimer);
+  }
+  async pollerLoop() {
+    let timeUntilRefreshInMs = 25;
+    let response;
+    try {
+      response = await this.requestAccessToken();
+    } catch (err) {
+      return this.handleTransientError({ error: err });
+    }
+    if (!isValidCustomResponse(response)) {
+      return this.handleInvalidCustomResponse();
+    }
+    const headers = convertHeaders(response.headers);
+    if (headers["date"]) {
+      this.updateClockSkew(Date.parse(headers["date"]));
+    }
+    if (response.status === 200) {
+      try {
+        const body = await response.text();
+        const token = JSON.parse(body);
+        if (!isAccessToken(token)) {
+          throw new Error("Response did not contain a valid access_token and expires_in");
+        }
+        token.expires_at = Math.round(Date.now() / 1e3) + token.expires_in;
+        this.tokenEmitter.emit("access_token", { token });
+        this.retryCount = 0;
+        timeUntilRefreshInMs = token.expires_in / 2 * 1e3;
+        return this.queueNextPoll(timeUntilRefreshInMs);
+      } catch (err) {
+        return this.handleTransientError({ error: err, forceEmitError: true });
+      }
+    } else if (response.status === 429) {
+      return await this.handleRateLimited(response, headers, timeUntilRefreshInMs);
+    } else if ([400, 401, 415].includes(response.status)) {
+      return this.handleUnrecoverableErrors(response);
+    } else {
+      return this.handleTransientError({
+        error: new Error(`[${response.status}] ${response.statusText}`)
+      });
+    }
+  }
+  handleTransientError({ error, forceEmitError }) {
+    this.incrementRetries({ error, forceEmitError });
+    const timeUntilRefreshInMs = backoff({
+      attempt: this.retryCount,
+      minTimeout: 25,
+      maxTimeout: 1e3
+    });
+    this.queueNextPoll(timeUntilRefreshInMs);
+  }
+  handleInvalidCustomResponse() {
+    this.tokenEmitter.emit("access_token", {
+      error: new Error("HTTPClient does not implement response.text method")
+    });
+  }
+  async handleRateLimited(response, headers, timeUntilRefreshInMs) {
+    this.incrementRetries({
+      error: new Error(`[${response.status}] ${response.statusText}`)
+    });
+    if (headers["x-ratelimit-reset"]) {
+      const rateLimitResetTimestamp = parseInt(headers["x-ratelimit-reset"], 10);
+      if (isFinite(rateLimitResetTimestamp)) {
+        timeUntilRefreshInMs = rateLimitResetTimestamp - Date.now() + this.clockSkewInSeconds * 1e3;
+      } else {
+        timeUntilRefreshInMs = 5 * 1e3;
+      }
+      await sleep(timeUntilRefreshInMs);
+      timeUntilRefreshInMs = 0;
+    }
+    this.queueNextPoll(timeUntilRefreshInMs);
+  }
+  handleUnrecoverableErrors(response) {
+    this.retryCount = 0;
+    this.tokenEmitter.emit("access_token", {
+      error: new Error(`[${response.status}] ${response.statusText}`)
+    });
+    this.stopPoller();
+  }
+  updateClockSkew(dateInMs) {
+    this.clockSkewInSeconds = (Date.now() - dateInMs) / 1e3;
+  }
+  incrementRetries({ error, forceEmitError }) {
+    this.retryCount++;
+    if (forceEmitError || this.retryCount % this.maxRetries === 0) {
+      this.retryCount = 0;
+      this.tokenEmitter.emit("access_token", { error });
+    }
+  }
+  queueNextPoll(timeUntilRefreshInMs) {
+    this.pollerTimer = setTimeout(() => this.pollerLoop(), timeUntilRefreshInMs);
+    if (this.pollerTimer.unref) {
+      this.pollerTimer.unref();
+    }
+  }
+  /**
+   * Solely responsible for building the HTTP request and calling the token service.
+   */
+  async requestAccessToken() {
+    const ISSUED_AT_BUFFER_IN_SECONDS = 5;
+    const MAX_EXPIRY_IN_SECONDS = 60;
+    const EXPIRY_IN_SECONDS = MAX_EXPIRY_IN_SECONDS - ISSUED_AT_BUFFER_IN_SECONDS;
+    const jti = v4();
+    const currentUTCInSeconds = Math.round(Date.now() / 1e3) - this.clockSkewInSeconds;
+    const jwtBody = {
+      iss: this.clientId,
+      sub: this.clientId,
+      aud: this.authServer,
+      iat: currentUTCInSeconds - ISSUED_AT_BUFFER_IN_SECONDS,
+      exp: currentUTCInSeconds + EXPIRY_IN_SECONDS,
+      jti
+    };
+    const key = await importPKCS8(this.clientKey);
+    const signedJwt = await new SignJWT(jwtBody).setProtectedHeader({ alg: this.alg, kid: this.keyId, typ: "JWT" }).sign(key);
+    const requestBody = `grant_type=${this.grantType}&client_assertion_type=${this.clientAssertionType}&client_assertion=${signedJwt}&scope=${this.scope}`;
+    const accessTokenEndpoint = `${this.authServer}/token`;
+    const requestOptions = {
+      method: "POST",
+      url: accessTokenEndpoint,
+      body: requestBody,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      httpRequestTimeout: 1e4
+    };
+    return this.httpClient.makeRequest(requestOptions);
+  }
+  async getAccessToken() {
+    if (this.isValidToken(this.accessToken)) {
+      return this.accessToken;
+    }
+    this.stopPoller();
+    this.pollerLoop().catch(() => {
+    });
+    return new Promise((resolve, reject) => {
+      this.tokenEmitter.once("access_token", (event) => {
+        if ("token" in event) {
+          resolve(event.token);
+        } else {
+          reject(event.error);
+        }
+      });
+    });
+  }
+  clearToken() {
+    this.accessToken = void 0;
+  }
+  isValidToken(token) {
+    return typeof token !== "undefined" && token !== null && token.expires_in < Date.now() / 1e3;
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/plugins/segmentio/publisher.js
+function sleep2(timeoutInMs) {
+  return new Promise((resolve) => setTimeout(resolve, timeoutInMs));
+}
+function noop() {
+}
+var Publisher = class {
+  pendingFlushTimeout;
+  _batch;
+  _flushInterval;
+  _flushAt;
+  _maxRetries;
+  _url;
+  _flushPendingItemsCount;
+  _httpRequestTimeout;
+  _emitter;
+  _disable;
+  _httpClient;
+  _writeKey;
+  _tokenManager;
+  constructor({ host, path, maxRetries, flushAt, flushInterval, writeKey, httpRequestTimeout, httpClient, disable, oauthSettings }, emitter) {
+    this._emitter = emitter;
+    this._maxRetries = maxRetries;
+    this._flushAt = Math.max(flushAt, 1);
+    this._flushInterval = flushInterval;
+    this._url = tryCreateFormattedUrl(host ?? "https://api.segment.io", path ?? "/v1/batch");
+    this._httpRequestTimeout = httpRequestTimeout ?? 1e4;
+    this._disable = Boolean(disable);
+    this._httpClient = httpClient;
+    this._writeKey = writeKey;
+    if (oauthSettings) {
+      this._tokenManager = new TokenManager({
+        ...oauthSettings,
+        httpClient: oauthSettings.httpClient ?? httpClient,
+        maxRetries: oauthSettings.maxRetries ?? maxRetries
+      });
+    }
+  }
+  createBatch() {
+    this.pendingFlushTimeout && clearTimeout(this.pendingFlushTimeout);
+    const batch = new ContextBatch(this._flushAt);
+    this._batch = batch;
+    this.pendingFlushTimeout = setTimeout(() => {
+      if (batch === this._batch) {
+        this._batch = void 0;
+      }
+      this.pendingFlushTimeout = void 0;
+      if (batch.length) {
+        this.send(batch).catch(noop);
+      }
+    }, this._flushInterval);
+    return batch;
+  }
+  clearBatch() {
+    this.pendingFlushTimeout && clearTimeout(this.pendingFlushTimeout);
+    this._batch = void 0;
+  }
+  flush(pendingItemsCount) {
+    if (!pendingItemsCount) {
+      if (this._tokenManager) {
+        this._tokenManager.stopPoller();
+      }
+      return;
+    }
+    this._flushPendingItemsCount = pendingItemsCount;
+    if (!this._batch)
+      return;
+    const isExpectingNoMoreItems = this._batch.length === pendingItemsCount;
+    if (isExpectingNoMoreItems) {
+      this.send(this._batch).catch(noop).finally(() => {
+        if (this._tokenManager) {
+          this._tokenManager.stopPoller();
+        }
+      });
+      this.clearBatch();
+    }
+  }
+  /**
+   * Enqueues the context for future delivery.
+   * @param ctx - Context containing a Segment event.
+   * @returns a promise that resolves with the context after the event has been delivered.
+   */
+  enqueue(ctx) {
+    const batch = this._batch ?? this.createBatch();
+    const { promise: ctxPromise, resolve } = createDeferred();
+    const pendingItem = {
+      context: ctx,
+      resolver: resolve
+    };
+    const addStatus = batch.tryAdd(pendingItem);
+    if (addStatus.success) {
+      const isExpectingNoMoreItems = batch.length === this._flushPendingItemsCount;
+      const isFull = batch.length === this._flushAt;
+      if (isFull || isExpectingNoMoreItems) {
+        this.send(batch).catch(noop);
+        this.clearBatch();
+      }
+      return ctxPromise;
+    }
+    if (batch.length) {
+      this.send(batch).catch(noop);
+      this.clearBatch();
+    }
+    const fallbackBatch = this.createBatch();
+    const fbAddStatus = fallbackBatch.tryAdd(pendingItem);
+    if (fbAddStatus.success) {
+      const isExpectingNoMoreItems = fallbackBatch.length === this._flushPendingItemsCount;
+      if (isExpectingNoMoreItems) {
+        this.send(fallbackBatch).catch(noop);
+        this.clearBatch();
+      }
+      return ctxPromise;
+    } else {
+      ctx.setFailedDelivery({
+        reason: new Error(fbAddStatus.message)
+      });
+      return Promise.resolve(ctx);
+    }
+  }
+  async send(batch) {
+    if (this._flushPendingItemsCount) {
+      this._flushPendingItemsCount -= batch.length;
+    }
+    const events = batch.getEvents();
+    const maxAttempts = this._maxRetries + 1;
+    let currentAttempt = 0;
+    while (currentAttempt < maxAttempts) {
+      currentAttempt++;
+      let requestedRetryTimeout;
+      let failureReason;
+      try {
+        if (this._disable) {
+          return batch.resolveEvents();
+        }
+        let authString = void 0;
+        if (this._tokenManager) {
+          const token = await this._tokenManager.getAccessToken();
+          if (token && token.access_token) {
+            authString = `Bearer ${token.access_token}`;
+          }
+        }
+        const headers = {
+          "Content-Type": "application/json",
+          "User-Agent": "analytics-node-next/latest",
+          ...authString ? { Authorization: authString } : {}
+        };
+        const request = {
+          url: this._url,
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            batch: events,
+            writeKey: this._writeKey,
+            sentAt: /* @__PURE__ */ new Date()
+          }),
+          httpRequestTimeout: this._httpRequestTimeout
+        };
+        this._emitter.emit("http_request", {
+          body: request.body,
+          method: request.method,
+          url: request.url,
+          headers: request.headers
+        });
+        const response = await this._httpClient.makeRequest(request);
+        if (response.status >= 200 && response.status < 300) {
+          batch.resolveEvents();
+          return;
+        } else if (this._tokenManager && (response.status === 400 || response.status === 401 || response.status === 403)) {
+          this._tokenManager.clearToken();
+          failureReason = new Error(`[${response.status}] ${response.statusText}`);
+        } else if (response.status === 400) {
+          resolveFailedBatch(batch, new Error(`[${response.status}] ${response.statusText}`));
+          return;
+        } else if (response.status === 429) {
+          if (response.headers && "x-ratelimit-reset" in response.headers) {
+            const rateLimitResetTimestamp = parseInt(response.headers["x-ratelimit-reset"], 10);
+            if (isFinite(rateLimitResetTimestamp)) {
+              requestedRetryTimeout = rateLimitResetTimestamp - Date.now();
+            }
+          }
+          failureReason = new Error(`[${response.status}] ${response.statusText}`);
+        } else {
+          failureReason = new Error(`[${response.status}] ${response.statusText}`);
+        }
+      } catch (err) {
+        failureReason = err;
+      }
+      if (currentAttempt === maxAttempts) {
+        resolveFailedBatch(batch, failureReason);
+        return;
+      }
+      await sleep2(requestedRetryTimeout ? requestedRetryTimeout : backoff({
+        attempt: currentAttempt,
+        minTimeout: 25,
+        maxTimeout: 1e3
+      }));
+    }
+  }
+};
+function resolveFailedBatch(batch, reason) {
+  batch.getContexts().forEach((ctx) => ctx.setFailedDelivery({ reason }));
+  batch.resolveEvents();
+}
+
+// node_modules/@segment/analytics-node/dist/esm/lib/env.js
+var detectRuntime = () => {
+  if (typeof process === "object" && process && typeof process.env === "object" && process.env && typeof process.version === "string") {
+    return "node";
+  }
+  if (typeof window === "object") {
+    return "browser";
+  }
+  if (typeof WebSocketPair !== "undefined") {
+    return "cloudflare-worker";
+  }
+  if (typeof EdgeRuntime === "string") {
+    return "vercel-edge";
+  }
+  if (
+    // @ts-ignore
+    typeof WorkerGlobalScope !== "undefined" && // @ts-ignore
+    typeof importScripts === "function"
+  ) {
+    return "web-worker";
+  }
+  return "unknown";
+};
+
+// node_modules/@segment/analytics-node/dist/esm/plugins/segmentio/index.js
+function normalizeEvent(ctx) {
+  ctx.updateEvent("context.library.name", "@segment/analytics-node");
+  ctx.updateEvent("context.library.version", version);
+  const runtime = detectRuntime();
+  if (runtime === "node") {
+    ctx.updateEvent("_metadata.nodeVersion", process.version);
+  }
+  ctx.updateEvent("_metadata.jsRuntime", runtime);
+}
+function createNodePlugin(publisher) {
+  function action(ctx) {
+    normalizeEvent(ctx);
+    return publisher.enqueue(ctx);
+  }
+  return {
+    name: "Segment.io",
+    type: "destination",
+    version: "1.0.0",
+    isLoaded: () => true,
+    load: () => Promise.resolve(),
+    alias: action,
+    group: action,
+    identify: action,
+    page: action,
+    screen: action,
+    track: action
+  };
+}
+var createConfiguredNodePlugin = (props, emitter) => {
+  const publisher = new Publisher(props, emitter);
+  return {
+    publisher,
+    plugin: createNodePlugin(publisher)
+  };
+};
+
+// node_modules/@segment/analytics-node/dist/esm/lib/get-message-id.js
+var createMessageId = () => {
+  return `node-next-${Date.now()}-${v4()}`;
+};
+
+// node_modules/@segment/analytics-node/dist/esm/app/event-factory.js
+var NodeEventFactory = class extends CoreEventFactory {
+  constructor() {
+    super({
+      createMessageId,
+      onFinishedEvent: (event) => {
+        assertUserIdentity(event);
+      }
+    });
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/app/context.js
+var Context = class extends CoreContext {
+  static system() {
+    return new this({ type: "track", event: "system" });
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/app/dispatch-emit.js
+var normalizeDispatchCb = (cb) => (ctx) => {
+  const failedDelivery = ctx.failedDelivery();
+  return failedDelivery ? cb(failedDelivery.reason, ctx) : cb(void 0, ctx);
+};
+var dispatchAndEmit = async (event, queue, emitter, callback) => {
+  try {
+    const context = new Context(event);
+    const ctx = await dispatch(context, queue, emitter, {
+      ...callback ? { callback: normalizeDispatchCb(callback) } : {}
+    });
+    const failedDelivery = ctx.failedDelivery();
+    if (failedDelivery) {
+      emitter.emit("error", {
+        code: "delivery_failure",
+        reason: failedDelivery.reason,
+        ctx
+      });
+    } else {
+      emitter.emit(event.type, ctx);
+    }
+  } catch (err) {
+    emitter.emit("error", {
+      code: "unknown",
+      reason: err
+    });
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/app/emitter.js
+var NodeEmitter = class extends Emitter {
+};
+
+// node_modules/@segment/analytics-node/dist/esm/app/event-queue.js
+var NodePriorityQueue = class extends PriorityQueue {
+  constructor() {
+    super(1, []);
+  }
+  // do not use an internal "seen" map
+  getAttempts(ctx) {
+    return ctx.attempts ?? 0;
+  }
+  updateAttempts(ctx) {
+    ctx.attempts = this.getAttempts(ctx) + 1;
+    return this.getAttempts(ctx);
+  }
+};
+var NodeEventQueue = class extends CoreEventQueue {
+  constructor() {
+    super(new NodePriorityQueue());
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/lib/abort.js
+var AbortSignal = class {
+  onabort = null;
+  aborted = false;
+  eventEmitter = new Emitter();
+  toString() {
+    return "[object AbortSignal]";
+  }
+  get [Symbol.toStringTag]() {
+    return "AbortSignal";
+  }
+  removeEventListener(...args) {
+    this.eventEmitter.off(...args);
+  }
+  addEventListener(...args) {
+    this.eventEmitter.on(...args);
+  }
+  dispatchEvent(type) {
+    const event = { type, target: this };
+    const handlerName = `on${type}`;
+    if (typeof this[handlerName] === "function") {
+      this[handlerName](event);
+    }
+    this.eventEmitter.emit(type, event);
+  }
+};
+var AbortController2 = class {
+  signal = new AbortSignal();
+  abort() {
+    if (this.signal.aborted)
+      return;
+    this.signal.aborted = true;
+    this.signal.dispatchEvent("abort");
+  }
+  toString() {
+    return "[object AbortController]";
+  }
+  get [Symbol.toStringTag]() {
+    return "AbortController";
+  }
+};
+var abortSignalAfterTimeout = (timeoutMs) => {
+  if (detectRuntime() === "cloudflare-worker") {
+    return [];
+  }
+  const ac = new (globalThis.AbortController || AbortController2)();
+  const timeoutId = setTimeout(() => {
+    ac.abort();
+  }, timeoutMs);
+  timeoutId?.unref?.();
+  return [ac.signal, timeoutId];
+};
+
+// node_modules/@segment/analytics-node/dist/esm/lib/fetch.js
+var fetch2 = (...args) => {
+  return globalThis.fetch(...args);
+};
+
+// node_modules/@segment/analytics-node/dist/esm/lib/http-client.js
+var FetchHTTPClient = class {
+  _fetch;
+  constructor(fetchFn) {
+    this._fetch = fetchFn ?? fetch2;
+  }
+  async makeRequest(options) {
+    const [signal, timeoutId] = abortSignalAfterTimeout(options.httpRequestTimeout);
+    const requestInit = {
+      url: options.url,
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+      signal
+    };
+    return this._fetch(options.url, requestInit).finally(() => clearTimeout(timeoutId));
+  }
+};
+
+// node_modules/@segment/analytics-node/dist/esm/app/analytics-node.js
+var Analytics = class extends NodeEmitter {
+  _eventFactory;
+  _isClosed = false;
+  _pendingEvents = 0;
+  _closeAndFlushDefaultTimeout;
+  _publisher;
+  _isFlushing = false;
+  _queue;
+  ready;
+  constructor(settings) {
+    super();
+    validateSettings(settings);
+    this._eventFactory = new NodeEventFactory();
+    this._queue = new NodeEventQueue();
+    const flushInterval = settings.flushInterval ?? 1e4;
+    this._closeAndFlushDefaultTimeout = flushInterval * 1.25;
+    const { plugin, publisher } = createConfiguredNodePlugin({
+      writeKey: settings.writeKey,
+      host: settings.host,
+      path: settings.path,
+      maxRetries: settings.maxRetries ?? 3,
+      flushAt: settings.flushAt ?? settings.maxEventsInBatch ?? 15,
+      httpRequestTimeout: settings.httpRequestTimeout,
+      disable: settings.disable,
+      flushInterval,
+      httpClient: typeof settings.httpClient === "function" ? new FetchHTTPClient(settings.httpClient) : settings.httpClient ?? new FetchHTTPClient(),
+      oauthSettings: settings.oauthSettings
+    }, this);
+    this._publisher = publisher;
+    this.ready = this.register(plugin).then(() => void 0);
+    this.emit("initialize", settings);
+    bindAll(this);
+  }
+  get VERSION() {
+    return version;
+  }
+  /**
+   * Call this method to stop collecting new events and flush all existing events.
+   * This method also waits for any event method-specific callbacks to be triggered,
+   * and any of their subsequent promises to be resolved/rejected.
+   */
+  closeAndFlush({ timeout = this._closeAndFlushDefaultTimeout } = {}) {
+    return this.flush({ timeout, close: true });
+  }
+  /**
+   * Call this method to flush all existing events..
+   * This method also waits for any event method-specific callbacks to be triggered,
+   * and any of their subsequent promises to be resolved/rejected.
+   */
+  async flush({ timeout, close = false } = {}) {
+    if (this._isFlushing) {
+      console.warn("Overlapping flush calls detected. Please wait for the previous flush to finish before calling .flush again");
+      return;
+    } else {
+      this._isFlushing = true;
+    }
+    if (close) {
+      this._isClosed = true;
+    }
+    this._publisher.flush(this._pendingEvents);
+    const promise = new Promise((resolve) => {
+      if (!this._pendingEvents) {
+        resolve();
+      } else {
+        this.once("drained", () => {
+          resolve();
+        });
+      }
+    }).finally(() => {
+      this._isFlushing = false;
+    });
+    return timeout ? pTimeout(promise, timeout).catch(() => void 0) : promise;
+  }
+  _dispatch(segmentEvent, callback) {
+    if (this._isClosed) {
+      this.emit("call_after_close", segmentEvent);
+      return void 0;
+    }
+    this._pendingEvents++;
+    dispatchAndEmit(segmentEvent, this._queue, this, callback).catch((ctx) => ctx).finally(() => {
+      this._pendingEvents--;
+      if (!this._pendingEvents) {
+        this.emit("drained");
+      }
+    });
+  }
+  /**
+   * Combines two unassociated user identities.
+   * @link https://segment.com/docs/connections/sources/catalog/libraries/server/node/#alias
+   */
+  alias({ userId, previousId, context, timestamp, integrations, messageId }, callback) {
+    const segmentEvent = this._eventFactory.alias(userId, previousId, {
+      context,
+      integrations,
+      timestamp,
+      messageId
+    });
+    this._dispatch(segmentEvent, callback);
+  }
+  /**
+   * Associates an identified user with a collective.
+   *  @link https://segment.com/docs/connections/sources/catalog/libraries/server/node/#group
+   */
+  group({ timestamp, groupId, userId, anonymousId, traits = {}, context, integrations, messageId }, callback) {
+    const segmentEvent = this._eventFactory.group(groupId, traits, {
+      context,
+      anonymousId,
+      userId,
+      timestamp,
+      integrations,
+      messageId
+    });
+    this._dispatch(segmentEvent, callback);
+  }
+  /**
+   * Includes a unique userId and (maybe anonymousId) and any optional traits you know about them.
+   * @link https://segment.com/docs/connections/sources/catalog/libraries/server/node/#identify
+   */
+  identify({ userId, anonymousId, traits = {}, context, timestamp, integrations, messageId }, callback) {
+    const segmentEvent = this._eventFactory.identify(userId, traits, {
+      context,
+      anonymousId,
+      userId,
+      timestamp,
+      integrations,
+      messageId
+    });
+    this._dispatch(segmentEvent, callback);
+  }
+  /**
+   * The page method lets you record page views on your website, along with optional extra information about the page being viewed.
+   * @link https://segment.com/docs/connections/sources/catalog/libraries/server/node/#page
+   */
+  page({ userId, anonymousId, category, name, properties, context, timestamp, integrations, messageId }, callback) {
+    const segmentEvent = this._eventFactory.page(category ?? null, name ?? null, properties, { context, anonymousId, userId, timestamp, integrations, messageId });
+    this._dispatch(segmentEvent, callback);
+  }
+  /**
+   * Records screen views on your app, along with optional extra information
+   * about the screen viewed by the user.
+   *
+   * TODO: This is not documented on the segment docs ATM (for node).
+   */
+  screen({ userId, anonymousId, category, name, properties, context, timestamp, integrations, messageId }, callback) {
+    const segmentEvent = this._eventFactory.screen(category ?? null, name ?? null, properties, { context, anonymousId, userId, timestamp, integrations, messageId });
+    this._dispatch(segmentEvent, callback);
+  }
+  /**
+   * Records actions your users perform.
+   * @link https://segment.com/docs/connections/sources/catalog/libraries/server/node/#track
+   */
+  track({ userId, anonymousId, event, properties, context, timestamp, integrations, messageId }, callback) {
+    const segmentEvent = this._eventFactory.track(event, properties, {
+      context,
+      userId,
+      anonymousId,
+      timestamp,
+      integrations,
+      messageId
+    });
+    this._dispatch(segmentEvent, callback);
+  }
+  /**
+   * Registers one or more plugins to augment Analytics functionality.
+   * @param plugins
+   */
+  register(...plugins) {
+    return this._queue.criticalTasks.run(async () => {
+      const ctx = Context.system();
+      const registrations = plugins.map((xt) => this._queue.register(ctx, xt, this));
+      await Promise.all(registrations);
+      this.emit("register", plugins.map((el) => el.name));
+    });
+  }
+  /**
+   * Deregisters one or more plugins based on their names.
+   * @param pluginNames - The names of one or more plugins to deregister.
+   */
+  async deregister(...pluginNames) {
+    const ctx = Context.system();
+    const deregistrations = pluginNames.map((pl) => {
+      const plugin = this._queue.plugins.find((p) => p.name === pl);
+      if (plugin) {
+        return this._queue.deregister(ctx, plugin, this);
+      } else {
+        ctx.log("warn", `plugin ${pl} not found`);
+      }
+    });
+    await Promise.all(deregistrations);
+    this.emit("deregister", pluginNames);
+  }
+};
+
+// packages/core/src/services/segment-profile-service.ts
+var SegmentProfileService = class {
+  analytics;
+  spaceId;
+  accessToken;
+  unifyToken;
+  logger;
+  constructor(config, logger2) {
+    this.analytics = new Analytics({ writeKey: config.writeKey });
+    this.spaceId = config.spaceId;
+    this.accessToken = config.accessToken;
+    this.unifyToken = config.unifyToken;
+    this.logger = logger2.child({ component: "segment-profile-service" });
+    this.logger.info("Segment Profile Service initialized");
+  }
+  /**
+   * Background identity tracking (fire-and-forget)
+   * Creates/updates user identity in Segment for analytics
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Fire-and-forget pattern
+  async identify(phone) {
+    const userId = `phone_${phone}`;
+    this.analytics.identify(
+      {
+        userId,
+        traits: { phone }
+      },
+      (err) => {
+        if (err) {
+          this.logger.warn({ err, phone }, "Segment identify failed (non-blocking)");
+        }
+      }
+    );
+  }
+  /**
+   * Background event tracking (fire-and-forget)
+   * Tracks conversation events for analytics
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Fire-and-forget pattern
+  async track(phone, event, properties) {
+    const userId = `phone_${phone}`;
+    this.analytics.track(
+      {
+        userId,
+        event,
+        properties
+      },
+      (err) => {
+        if (err) {
+          this.logger.warn({ err, event, phone }, "Segment track failed (non-blocking)");
+        }
+      }
+    );
+  }
+  /**
+   * Retrieve customer profile traits from Segment Profile API
+   * Used by LLM tools to fetch customer context on-demand
+   */
+  async getProfile(phone, fields) {
+    const token = this.unifyToken || this.accessToken;
+    if (!this.spaceId || !token) {
+      this.logger.warn("Segment Profile API not configured (missing spaceId or token)");
+      return {};
+    }
+    const userId = `phone_${phone}`;
+    const url = `https://profiles.segment.com/v1/spaces/${this.spaceId}/collections/users/profiles/user_id:${userId}/traits`;
+    try {
+      const auth = Buffer.from(`${token}:`).toString("base64");
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Basic ${auth}`
+        }
+      });
+      if (response.status === 404) {
+        this.logger.debug({ phone }, "Profile not found (will be created on first write)");
+        return {};
+      }
+      if (!response.ok) {
+        throw new Error(`Profile API error: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (fields && fields.length > 0) {
+        const filtered = {};
+        for (const field of fields) {
+          if (field in data.traits) {
+            filtered[field] = data.traits[field];
+          }
+        }
+        return filtered;
+      }
+      return data.traits || {};
+    } catch (error) {
+      this.logger.error({ err: error, phone }, "Failed to retrieve profile from Segment");
+      return {};
+    }
+  }
+  /**
+   * Update customer profile traits in Segment
+   * Uses Events API (identify) - Profile API is read-only and only supports GET
+   */
+  async updateProfile(phone, traits) {
+    const userId = `phone_${phone}`;
+    return new Promise((resolve, reject) => {
+      this.analytics.identify(
+        {
+          userId,
+          traits: { ...traits, phone }
+          // Include phone in traits
+        },
+        (err) => {
+          if (err) {
+            this.logger.error({ err, phone, traits }, "Failed to update profile in Segment");
+            reject(err);
+          } else {
+            this.logger.debug({ phone, traits }, "Profile traits sent to Segment");
+            resolve();
+          }
+        }
+      );
+    });
+  }
+  /**
+   * Graceful shutdown - flush queued events to Segment
+   */
+  async close() {
+    try {
+      await this.analytics.closeAndFlush();
+      this.logger.info("Segment analytics flushed and closed");
+    } catch (error) {
+      this.logger.error({ err: error }, "Error closing Segment analytics");
+    }
+  }
+};
+
+// packages/core/src/services/memora-profile-service.ts
+var MemoraProfileService = class {
+  memoryClient;
+  storeId;
+  logger;
+  /**
+   * Cache mapping phone numbers to profile IDs
+   * Populated during identify() call
+   */
+  profileCache = /* @__PURE__ */ new Map();
+  constructor(memoryClient, storeId, logger2) {
+    this.memoryClient = memoryClient;
+    this.storeId = storeId;
+    this.logger = logger2.child({ component: "memora-profile-service" });
+    this.logger.info("Memora Profile Service initialized");
+  }
+  /**
+   * BLOCKING identity resolution
+   * Looks up profile by phone number and caches profile_id for later use
+   */
+  async identify(phone) {
+    try {
+      const lookupResponse = await this.memoryClient.lookupProfile(this.storeId, "phone", phone);
+      if (lookupResponse.profiles && lookupResponse.profiles.length > 0) {
+        const profileId = lookupResponse.profiles[0];
+        this.profileCache.set(phone, profileId);
+        this.logger.debug({ phone, profile_id: profileId }, "Profile identified and cached");
+      } else {
+        this.logger.warn({ phone }, "No profile found for phone number");
+      }
+    } catch (error) {
+      this.logger.error({ err: error, phone }, "Failed to identify profile");
+      throw error;
+    }
+  }
+  /**
+   * No-op for Memora (no event tracking capability)
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- No-op method
+  async track(phone, event, _properties) {
+    this.logger.debug({ phone, event }, "Event tracking not supported in Memora (no-op)");
+  }
+  /**
+   * Retrieve customer profile traits from Memora
+   * Used by LLM tools to fetch customer context on-demand
+   */
+  async getProfile(phone, fields) {
+    const profileId = this.profileCache.get(phone);
+    if (!profileId) {
+      this.logger.warn({ phone }, "Profile not identified - call identify() first");
+      throw new Error("Profile not identified - call identify() first");
+    }
+    try {
+      const profileResponse = await this.memoryClient.getProfile(this.storeId, profileId);
+      if (fields && fields.length > 0) {
+        const filtered = {};
+        for (const field of fields) {
+          if (field in profileResponse.traits) {
+            filtered[field] = profileResponse.traits[field];
+          }
+        }
+        return filtered;
+      }
+      return profileResponse.traits;
+    } catch (error) {
+      this.logger.error({ err: error, phone, profile_id: profileId }, "Failed to retrieve profile");
+      throw error;
+    }
+  }
+  /**
+   * Update customer profile traits
+   * Note: MemoryClient doesn't have updateProfile method - this would need to be added to MemoryClient
+   * For now, throw an error indicating this is not yet implemented
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Throws error, no async operation
+  async updateProfile(phone, traits) {
+    const profileId = this.profileCache.get(phone);
+    if (!profileId) {
+      this.logger.warn({ phone }, "Profile not identified - call identify() first");
+      throw new Error("Profile not identified - call identify() first");
+    }
+    this.logger.warn(
+      { phone, profile_id: profileId, traits },
+      "updateProfile not yet implemented for Memora"
+    );
+    throw new Error(
+      "updateProfile not yet implemented for Memora - MemoryClient needs updateProfile method"
+    );
+  }
+  /**
+   * No cleanup needed for Memora
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- No async cleanup needed
+  async close() {
+    this.logger.debug("Memora profile service closed (no cleanup needed)");
+  }
+};
+
 // packages/core/src/lib/tac.ts
 var TAC = class {
   config;
@@ -1938,6 +5349,7 @@ var TAC = class {
   conversationClient;
   channels;
   cintelProcessor;
+  profileService;
   // Callback registrations
   messageReadyCallback;
   interruptCallback;
@@ -1949,16 +5361,56 @@ var TAC = class {
     this.config = finalConfig;
     this.logger = finalLogger;
     this.channels = /* @__PURE__ */ new Map();
-    if (this.config.memoryStoreId) {
+    if (this.config.profileServiceProvider === "memora" && this.config.memoryStoreId) {
       this.memoryClient = new MemoryClient(this.config, this.logger.child({ component: "memory" }));
-      this.logger.info("Memory client initialized");
+      this.logger.info("Memora Memory client initialized");
       this.knowledgeClient = new KnowledgeClient(
         this.config,
         this.logger.child({ component: "knowledge" })
       );
       this.logger.info("Knowledge client initialized");
+    } else if (this.config.memoryStoreId) {
+      this.logger.info(
+        'Memory credentials provided but PROFILE_SERVICE_PROVIDER is not "memora". Memory client not initialized (use PROFILE_SERVICE_PROVIDER=memora to enable)'
+      );
     } else {
       this.logger.info("Memory and Knowledge clients not initialized (credentials not provided)");
+    }
+    if (this.config.profileServiceProvider === "segment") {
+      if (!this.config.segmentWriteKey) {
+        throw new Error("SEGMENT_WRITE_KEY is required when PROFILE_SERVICE_PROVIDER=segment");
+      }
+      const segmentConfig = {
+        writeKey: this.config.segmentWriteKey
+      };
+      if (this.config.segmentSpaceId !== void 0) {
+        segmentConfig.spaceId = this.config.segmentSpaceId;
+      }
+      if (this.config.segmentAccessToken !== void 0) {
+        segmentConfig.accessToken = this.config.segmentAccessToken;
+      }
+      if (this.config.segmentUnifyToken !== void 0) {
+        segmentConfig.unifyToken = this.config.segmentUnifyToken;
+      }
+      this.profileService = new SegmentProfileService(
+        segmentConfig,
+        this.logger.child({ component: "segment-profile" })
+      );
+      this.logger.info("Segment Profile Service initialized");
+    } else if (this.config.profileServiceProvider === "memora") {
+      if (!this.memoryClient || !this.config.memoryStoreId) {
+        throw new Error("MEMORY_STORE_ID is required when PROFILE_SERVICE_PROVIDER=memora");
+      }
+      this.profileService = new MemoraProfileService(
+        this.memoryClient,
+        this.config.memoryStoreId,
+        this.logger.child({ component: "memora-profile" })
+      );
+      this.logger.info("Memora Profile Service initialized");
+    } else if (this.config.profileServiceProvider) {
+      throw new Error(
+        `Invalid PROFILE_SERVICE_PROVIDER: ${String(this.config.profileServiceProvider)}. Must be "segment" or "memora"`
+      );
     }
     if (this.memoryClient && this.config.cintelConfigurationId) {
       this.cintelProcessor = new OperatorResultProcessor(
@@ -2250,6 +5702,13 @@ var TAC = class {
     return this.knowledgeClient;
   }
   /**
+   * Get profile service for customer profile and identity operations
+   * Returns undefined if no profile service provider is configured
+   */
+  getProfileService() {
+    return this.profileService;
+  }
+  /**
    * Get conversation client for advanced conversation operations
    */
   getConversationClient() {
@@ -2395,10 +5854,13 @@ var TAC = class {
   /**
    * Shutdown TAC and cleanup resources
    */
-  shutdown() {
+  async shutdown() {
     for (const channel of this.channels.values()) {
       this.logger.debug({ channel: channel.channelType }, "Shutting down channel");
       channel.shutdown();
+    }
+    if (this.profileService) {
+      await this.profileService.close();
     }
     this.channels.clear();
     this.logger.info("TAC shutdown complete");
@@ -2815,9 +6277,9 @@ var SMSChannel = class extends BaseChannel {
     await super.handleCommunicationCreated(payload);
     const conversationId = this.extractConversationId(payload);
     const profileId = this.extractProfileId(payload);
-    const message = payload.data.content.text.trim();
+    const message2 = payload.data.content.text.trim();
     const author = payload.data.author.address || "unknown";
-    if (!conversationId || !message) {
+    if (!conversationId || !message2) {
       return;
     }
     if (author === this.config.twilioPhoneNumber) {
@@ -2831,10 +6293,31 @@ var SMSChannel = class extends BaseChannel {
         participant_id: payload.data.author.participantId
       };
     }
+    const profileService = this.tac.getProfileService();
+    if (profileService) {
+      const phone = author;
+      if (this.config.profileServiceProvider === "segment") {
+        profileService.identify(phone).catch((err) => {
+          this.logger.warn({ err, phone }, "Profile identify failed (non-blocking)");
+        });
+        profileService.track(phone, "message_received", { conversation_id: conversationId }).catch((err) => {
+          this.logger.warn(
+            { err, phone, event: "message_received" },
+            "Profile track failed (non-blocking)"
+          );
+        });
+      } else if (this.config.profileServiceProvider === "memora") {
+        try {
+          await profileService.identify(phone);
+        } catch (error) {
+          this.logger.warn({ err: error, phone }, "Memora profile identify failed");
+        }
+      }
+    }
     let userMemory;
     if (session && this.tac.isMemoryEnabled()) {
       try {
-        userMemory = await this.tac.retrieveMemory(session, message);
+        userMemory = await this.tac.retrieveMemory(session, message2);
       } catch (error) {
         this.logger.warn(
           { err: error, conversation_id: conversationId },
@@ -2846,7 +6329,7 @@ var SMSChannel = class extends BaseChannel {
       this.smsCallbacks.onMessageReceived({
         conversationId,
         profileId: profileId ?? void 0,
-        message,
+        message: message2,
         author,
         userMemory
       });
@@ -2856,11 +6339,11 @@ var SMSChannel = class extends BaseChannel {
    * Send SMS response using Twilio Messages API
    * Note: This is a workaround until Conversations Service supports sending messages
    */
-  async sendResponse(conversationId, message, metadata) {
+  async sendResponse(conversationId, message2, metadata) {
     this.logger.debug(
       {
         conversation_id: conversationId,
-        message_length: message.length,
+        message_length: message2.length,
         operation: "send_response"
       },
       "Sending SMS response"
@@ -2910,7 +6393,7 @@ var SMSChannel = class extends BaseChannel {
             await this.twilioClient.messages.create({
               to: addr.address,
               from: this.config.twilioPhoneNumber,
-              body: message
+              body: message2
             });
             this.logger.info(
               { conversation_id: conversationId, to_address: addr.address },
@@ -2936,7 +6419,7 @@ var SMSChannel = class extends BaseChannel {
       this.logger.error({ err: error, conversation_id: conversationId }, "Send response error");
       this.handleError(error instanceof Error ? error : new Error(String(error)), {
         conversationId,
-        message,
+        message: message2,
         metadata
       });
       throw error;
@@ -3015,19 +6498,19 @@ var VoiceChannel = class extends BaseChannel {
           );
           return;
         }
-        const message = validatedMessage.data;
-        switch (message.type) {
+        const message2 = validatedMessage.data;
+        switch (message2.type) {
           case "setup":
-            conversationId = this.handleSetupMessage(ws, message);
+            conversationId = this.handleSetupMessage(ws, message2);
             break;
           case "prompt":
             if (conversationId) {
-              this.handlePromptMessage(conversationId, message);
+              this.handlePromptMessage(conversationId, message2);
             }
             break;
           case "interrupt":
             if (conversationId) {
-              this.handleInterruptMessage(conversationId, message);
+              this.handleInterruptMessage(conversationId, message2);
             }
             break;
           default:
@@ -3061,8 +6544,8 @@ var VoiceChannel = class extends BaseChannel {
   /**
    * Handle WebSocket setup message
    */
-  handleSetupMessage(ws, message) {
-    const { callSid, from, to, customParameters } = message;
+  handleSetupMessage(ws, message2) {
+    const { callSid, from, to, customParameters } = message2;
     let conversationId;
     let profileId;
     if (customParameters?.conversation_id && typeof customParameters.conversation_id === "string" && isConversationId(customParameters.conversation_id)) {
@@ -3079,6 +6562,19 @@ var VoiceChannel = class extends BaseChannel {
     session.author_info = {
       address: from
     };
+    const profileService = this.tac.getProfileService();
+    if (profileService) {
+      const phone = from;
+      profileService.identify(phone).catch((err) => {
+        this.logger.warn({ err, phone }, "Profile identify failed (non-blocking)");
+      });
+      profileService.track(phone, "call_started", { conversation_id: conversationId, call_sid: callSid }).catch((err) => {
+        this.logger.warn(
+          { err, phone, event: "call_started" },
+          "Profile track failed (non-blocking)"
+        );
+      });
+    }
     if (this.voiceCallbacks.onSetup) {
       this.voiceCallbacks.onSetup({
         conversationId,
@@ -3097,8 +6593,8 @@ var VoiceChannel = class extends BaseChannel {
   /**
    * Handle WebSocket prompt message (user speech)
    */
-  handlePromptMessage(conversationId, message) {
-    const transcript = message.voicePrompt;
+  handlePromptMessage(conversationId, message2) {
+    const transcript = message2.voicePrompt;
     this.cancelStreamTask(conversationId);
     if (this.voiceCallbacks.onPrompt) {
       this.voiceCallbacks.onPrompt({
@@ -3110,8 +6606,8 @@ var VoiceChannel = class extends BaseChannel {
   /**
    * Handle WebSocket interrupt message
    */
-  handleInterruptMessage(conversationId, message) {
-    const { reason, transcript } = message;
+  handleInterruptMessage(conversationId, message2) {
+    const { reason, transcript } = message2;
     const cancelled = this.cancelStreamTask(conversationId);
     if (cancelled) {
       this.logger.info(
@@ -3146,7 +6642,7 @@ var VoiceChannel = class extends BaseChannel {
   /**
    * Send voice response via WebSocket
    */
-  sendResponse(conversationId, message, metadata) {
+  sendResponse(conversationId, message2, metadata) {
     try {
       const ws = this.webSocketConnections.get(conversationId);
       if (ws?.readyState !== WebSocket.OPEN) {
@@ -3154,7 +6650,7 @@ var VoiceChannel = class extends BaseChannel {
       }
       const response = {
         type: "text",
-        token: message,
+        token: message2,
         last: true
       };
       ws.send(JSON.stringify(response));
@@ -3162,7 +6658,7 @@ var VoiceChannel = class extends BaseChannel {
     } catch (error) {
       this.handleError(error instanceof Error ? error : new Error(String(error)), {
         conversationId,
-        message,
+        message: message2,
         metadata
       });
       throw error;
@@ -3767,6 +7263,9 @@ var DEFAULT_CONFIG = {
     conversation: "/conversation",
     conversationRelayCallback: "/conversation-relay-callback"
   },
+  conversationRelayConfig: {
+    welcomeGreeting: "Hello! How can I assist you today?"
+  },
   development: false,
   validateWebhooks: true
 };
@@ -3776,7 +7275,20 @@ var TACServer = class {
   config;
   constructor(tac, config = {}) {
     this.tac = tac;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      // Deep merge webhookPaths to preserve defaults while allowing overrides
+      webhookPaths: {
+        ...DEFAULT_CONFIG.webhookPaths,
+        ...config.webhookPaths
+      },
+      // Deep merge conversationRelayConfig to preserve defaults while allowing overrides
+      conversationRelayConfig: {
+        ...DEFAULT_CONFIG.conversationRelayConfig,
+        ...config.conversationRelayConfig
+      }
+    };
     this.fastify = Fastify({
       logger: this.config.development ? {
         level: process.env.LOG_LEVEL || "info",
@@ -4105,7 +7617,7 @@ var TACServer = class {
       this.fastify.gracefulShutdown(async (signal) => {
         this.fastify.log.info({ signal }, "Received shutdown signal");
         await this.waitForWebSocketsToClose();
-        this.tac.shutdown();
+        await this.tac.shutdown();
       });
       const voiceConfig = VoiceServerConfigSchema.parse(this.config.voice);
       await this.fastify.listen({
@@ -4189,6 +7701,6 @@ var TACServer = class {
   }
 };
 
-export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoraProfileService, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, ProfileServiceProviderSchema, PromptMessageSchema, SMSChannel, SegmentProfileService, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

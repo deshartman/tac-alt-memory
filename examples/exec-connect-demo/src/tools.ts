@@ -4,7 +4,7 @@
 
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import type { TAC, ConversationSession } from '@twilio/tac-core';
+import type { TAC, ConversationSession } from 'twilio-agent-connect';
 import { COMPANY_INFO, INTERNET_PLANS } from './business-data';
 
 /**
@@ -258,3 +258,12 @@ export function createFlexEscalationTool(session: ConversationSession | null) {
     },
   });
 }
+
+// Re-export profile/memory tools
+export {
+  createRetrieveProfileTool,
+  createUpdateProfileTool,
+  createRetrieveMemoryTool,
+  createStoreMemoryTool,
+  type ProfileMemoryToolContext,
+} from './tools/profile-memory-tools.js';

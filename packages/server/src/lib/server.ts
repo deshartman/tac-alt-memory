@@ -537,7 +537,7 @@ export class TACServer {
         await this.waitForWebSocketsToClose();
 
         // Shutdown TAC (cleans up channel state)
-        this.tac.shutdown();
+        await this.tac.shutdown();
       });
 
       // Start Fastify server
