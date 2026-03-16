@@ -73,28 +73,38 @@ TAC supports two profile service providers for identity resolution and event tra
 
    ![Segment Write Key Location](./images/segment-write-key.png)
 
-2. **Get Space ID**:
-   - Go to **Settings (gear icon) > Workspace Settings**
-   - On **General Settings** tab, copy the **ID** field
-   - Format is alphanumeric (e.g., `3GYGm`), not "sp_xxxxx"
+2. **Get Space ID and Create Unify Token** (both on same page):
+
+   Navigate to Unify API access page:
+   - In Segment left sidebar, click **Unify**
+   - Click **Unify settings** at the bottom
+   - Click the **API access** tab
+
+   **Get Space ID** (top of page):
+   - Look for: "Use the following space ID to access the Profile API:"
+   - Copy the Space ID (e.g., `spa_hvakucpPfsY4mZ18GCmVmf`)
+   - Format **must start with `spa_`**
 
    ![Segment Space ID Location](./images/segment-space-id.png)
 
-3. **Create Access Token** (for Profile API):
-   - Go to **Settings > Access Management > Tokens**
-   - Click **"Create Token"**
-   - Select **"Public API"** type
-   - Grant **Workspace Owner** permissions or minimum **Profile Read/Write**
-   - Save the token securely (won't be shown again)
+3. **Create Unify API Access Token** (same page as Space ID):
+
+   Scroll down on the same page:
+   - View the tokens table (Token Name, Token ID, Created On)
+   - Click **"Create API Access Token"**
+   - Name it (e.g., `TAC Profile API` or `TAC-Segment`)
+   - Select appropriate access level
+   - Click **"Create"**
+   - **Copy the full token immediately** (you won't see it again)
 
    ![Segment Access Token Location](./images/segment-access-token.png)
 
 4. **Configure Environment Variables**:
    ```bash
    PROFILE_SERVICE_PROVIDER=segment
-   SEGMENT_WRITE_KEY=your_write_key_here              # Required
-   SEGMENT_SPACE_ID=your_workspace_id_here            # Required for Profile API
-   SEGMENT_ACCESS_TOKEN=your_access_token_here        # Required for Profile API
+   SEGMENT_WRITE_KEY=your_write_key_here              # Required: from Sources
+   SEGMENT_SPACE_ID=spa_xxxxxxxxxxxx                  # Required: from Unify > API access (starts with spa_)
+   SEGMENT_UNIFY_TOKEN=your_unify_token_here          # Required: from Unify > API access (same page as Space ID)
    ```
 
 **Performance**: Message reaches LLM in ~5ms (non-blocking)

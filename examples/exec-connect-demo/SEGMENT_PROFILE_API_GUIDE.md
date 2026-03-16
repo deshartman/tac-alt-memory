@@ -10,29 +10,33 @@ The Space ID is required for Profile API access.
 
 **Steps:**
 1. Log into [Segment](https://app.segment.com/)
-2. Navigate to **Unify > Settings**
-3. Click **API access** tab
-4. Look for: "Use the following space ID to access the Profile API:"
-5. Copy the value shown (format: `spa_xxxxxxxxxxxxxxxxxx`)
+2. In the left sidebar, click **Unify**
+3. Click **Unify settings** at the bottom of the Unify section
+4. Click the **API access** tab at the top
+5. Look for the text: **"Use the following space ID to access the Profile API:"**
+6. Copy the space ID shown (format: `spa_xxxxxxxxxxxxxxxxxx`)
 
 **Important:**
-- Space ID **starts with `spa_`** (not just alphanumeric)
-- Found on **Unify > Settings > API access** tab
+- Space ID **starts with `spa_`** (e.g., `spa_hvakucpPfsY4mZ18GCmVmf`)
+- Found in **Unify > Unify settings > API access** tab
 - Different from Workspace ID
+- Same page shows your Unify API access tokens below
 
 ![Space ID Location](./images/segment-space-id-location.png)
 
 ### 2. Create Unify API Access Token
 
-The Unify token authenticates Profile API requests.
+The Unify token authenticates Profile API requests. This token is created on the **same page** as the Space ID.
 
 **Steps:**
-1. In Segment **Unify**, go to **Settings > API Access**
-2. Click **"Create API Access Token"**
-3. Name it (e.g., `TAC Profile API`)
-4. Select appropriate access level
-5. Click **"Create"**
-6. **Copy the token immediately** (you can't see it again)
+1. On the same **Unify > Unify settings > API access** page (from Step 1 above)
+2. Scroll down to the **tokens table** (shows Token Name, Token ID, Created On)
+3. Click **"Create API Access Token"** button
+4. Name it (e.g., `TAC Profile API` or `TAC-Segment`)
+5. Select appropriate access level
+6. Click **"Create"**
+7. **Copy the full token immediately** (you won't be able to see it again)
+8. The token will appear in the table with just its ID (e.g., `70d938`)
 
 This token is used with **Basic Auth** format:
 ```
