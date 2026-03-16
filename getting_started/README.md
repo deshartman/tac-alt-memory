@@ -14,17 +14,17 @@ This guide will walk you through setting up and running your first TAC applicati
 
 ## Step 1: Set Up Twilio Services
 
-You need to create Twilio Conversations Configuration and Memory services before using TAC. Create these services through the [Twilio Console](https://console.twilio.com/).
+You need to create Twilio Conversations Configuration and Memory services before using TAC. Create these services through the [Twilio 1Console](https://1console.twilio.com/).
 
 **Services to create:**
 
 1. **Conversations Configuration** - For managing SMS and Voice conversations
-   - Go to [Twilio Console > Conversations](https://console.twilio.com/us1/develop/conversations/configuration)
+   - Go to [Twilio Console > Conversations](https://1console.twilio.com/us1/develop/conversations/configuration)
    - Create a new Conversations Configuration
    - Note the Configuration ID (format: `conv_configuration_xxxxx`)
 
 2. **Memory Store** (optional but recommended) - For persistent user profiles and conversation history
-   - Go to [Twilio Console > Memory](https://console.twilio.com/us1/develop/memory/stores)
+   - Go to [Twilio Console > Memory](https://1console.twilio.com/us1/develop/memory/stores)
    - Create a new Memory Store
    - Note the Store ID (format: `mem_store_xxxxx`)
 
@@ -83,13 +83,13 @@ See [`examples/.env.example`](examples/.env.example) for all available configura
 - `TWILIO_AUTH_TOKEN`: Twilio auth token
 - `TWILIO_PHONE_NUMBER`: Your Twilio phone number
 - `CONVERSATION_SERVICE_ID`: Conversations Configuration ID (from Step 1)
+- `TWILIO_API_KEY`: Twilio API key (required by TACConfig)
+- `TWILIO_API_TOKEN`: Twilio API token (required by TACConfig)
 - `OPENAI_API_KEY`: Your OpenAI API key (for OpenAI example)
 
 ### Optional (Memory)
 
 - `MEMORY_STORE_ID`: Memory store ID
-- `TWILIO_API_KEY`: Twilio API key (required for Memory)
-- `TWILIO_API_TOKEN`: Twilio API token (required for Memory)
 
 ### Optional (Server)
 
