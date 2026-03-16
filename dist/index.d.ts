@@ -1424,9 +1424,9 @@ declare const ConversationsCommunicationDataSchema: z.ZodObject<{
         participantId?: string | undefined;
         deliveryStatus?: string | undefined;
     }>, "many">;
-    channelId: z.ZodOptional<z.ZodString>;
+    channelId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     serviceId: z.ZodOptional<z.ZodString>;
-    profileId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     participantType: z.ZodOptional<z.ZodString>;
     status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
     createdAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1454,8 +1454,8 @@ declare const ConversationsCommunicationDataSchema: z.ZodObject<{
     status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    channelId?: string | undefined;
-    profileId?: string | undefined;
+    channelId?: string | null | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }, {
@@ -1481,8 +1481,8 @@ declare const ConversationsCommunicationDataSchema: z.ZodObject<{
     status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    channelId?: string | undefined;
-    profileId?: string | undefined;
+    channelId?: string | null | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }>;
@@ -1502,7 +1502,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
     name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     serviceId: z.ZodOptional<z.ZodString>;
-    profileId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     participantType: z.ZodOptional<z.ZodString>;
     author: z.ZodOptional<z.ZodObject<{
         address: z.ZodString;
@@ -1551,7 +1551,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
     conversationId?: string | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }, {
@@ -1573,7 +1573,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
     conversationId?: string | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }>, {
@@ -1595,7 +1595,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     } | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }, {
@@ -1617,7 +1617,7 @@ declare const ConversationsConversationDataSchema: z.ZodEffects<z.ZodObject<{
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
     conversationId?: string | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }>;
@@ -1633,7 +1633,7 @@ declare const ConversationsParticipantDataSchema: z.ZodObject<{
     name: z.ZodString;
     type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
     participantType: z.ZodOptional<z.ZodString>;
-    profileId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     serviceId: z.ZodOptional<z.ZodString>;
     addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
         channel: z.ZodString;
@@ -1696,7 +1696,7 @@ declare const ConversationsParticipantDataSchema: z.ZodObject<{
     } | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     addresses?: {
         address: string;
         channel: string;
@@ -1723,7 +1723,7 @@ declare const ConversationsParticipantDataSchema: z.ZodObject<{
     } | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    profileId?: string | undefined;
+    profileId?: string | null | undefined;
     addresses?: {
         address: string;
         channel: string;
@@ -1785,9 +1785,9 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
             participantId?: string | undefined;
             deliveryStatus?: string | undefined;
         }>, "many">;
-        channelId: z.ZodOptional<z.ZodString>;
+        channelId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         createdAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1815,8 +1815,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -1842,8 +1842,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -1872,8 +1872,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -1903,8 +1903,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -1925,7 +1925,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         author: z.ZodOptional<z.ZodObject<{
             address: z.ZodString;
@@ -1974,7 +1974,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -1996,7 +1996,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>, {
@@ -2018,7 +2018,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2040,7 +2040,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -2065,7 +2065,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2091,7 +2091,7 @@ declare const ConversationWebhookPayloadSchema: z.ZodObject<{
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2111,7 +2111,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         name: z.ZodString;
         type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
         participantType: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
         addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
             channel: z.ZodString;
@@ -2174,7 +2174,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2201,7 +2201,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2231,7 +2231,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2262,7 +2262,7 @@ declare const ParticipantWebhookPayloadSchema: z.ZodObject<{
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2334,9 +2334,9 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
             participantId?: string | undefined;
             deliveryStatus?: string | undefined;
         }>, "many">;
-        channelId: z.ZodOptional<z.ZodString>;
+        channelId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         createdAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -2364,8 +2364,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2391,8 +2391,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -2421,8 +2421,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2452,8 +2452,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2469,7 +2469,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         author: z.ZodOptional<z.ZodObject<{
             address: z.ZodString;
@@ -2518,7 +2518,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2540,7 +2540,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>, {
@@ -2562,7 +2562,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2584,7 +2584,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -2609,7 +2609,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2635,7 +2635,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
         conversationId?: string | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2650,7 +2650,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         name: z.ZodString;
         type: z.ZodOptional<z.ZodEnum<["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]>>;
         participantType: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
         addresses: z.ZodOptional<z.ZodArray<z.ZodObject<{
             channel: z.ZodString;
@@ -2713,7 +2713,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2740,7 +2740,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2770,7 +2770,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;
@@ -2801,7 +2801,7 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         } | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        profileId?: string | undefined;
+        profileId?: string | null | undefined;
         addresses?: {
             address: string;
             channel: string;

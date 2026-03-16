@@ -202,10 +202,10 @@ var ConversationsCommunicationDataSchema = z.object({
       deliveryStatus: z.string().optional()
     })
   ),
-  channelId: z.string().optional(),
+  channelId: z.string().nullish(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
   // May be included for cross-event compatibility
   participantType: z.string().optional(),
   // May be included for cross-event compatibility
@@ -224,7 +224,7 @@ var ConversationsConversationDataSchema = z.object({
   name: z.string().nullable().optional(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
   // Profile ID may be included in conversation events
   participantType: z.string().optional(),
   // May be included for cross-event compatibility
@@ -253,7 +253,7 @@ var ConversationsParticipantDataSchema = z.object({
   type: z.enum(["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]).optional(),
   participantType: z.string().optional(),
   // Legacy field name (same as 'type')
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
   addresses: z.array(
@@ -3764,6 +3764,9 @@ var DEFAULT_CONFIG = {
     conversation: "/conversation",
     conversationRelayCallback: "/conversation-relay-callback"
   },
+  conversationRelayConfig: {
+    welcomeGreeting: "Hello! How can I assist you today?"
+  },
   development: false,
   validateWebhooks: true
 };
@@ -3773,7 +3776,20 @@ var TACServer = class {
   config;
   constructor(tac, config = {}) {
     this.tac = tac;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      // Deep merge webhookPaths to preserve defaults while allowing overrides
+      webhookPaths: {
+        ...DEFAULT_CONFIG.webhookPaths,
+        ...config.webhookPaths
+      },
+      // Deep merge conversationRelayConfig to preserve defaults while allowing overrides
+      conversationRelayConfig: {
+        ...DEFAULT_CONFIG.conversationRelayConfig,
+        ...config.conversationRelayConfig
+      }
+    };
     this.fastify = Fastify({
       logger: this.config.development ? {
         level: process.env.LOG_LEVEL || "info",
