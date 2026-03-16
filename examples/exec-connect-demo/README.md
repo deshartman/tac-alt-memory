@@ -291,16 +291,14 @@ TWILIO_VOICE_PUBLIC_DOMAIN=your-ngrok-domain.ngrok.app
    - Click **Unify settings** at the bottom
    - Click the **API access** tab
 
-   **Get Space ID:**
+   ![Segment Unify API Access Page](./images/segment-unify-api-access.png)
+
+   **Get Space ID** (top of page):
    - At the top of the page, look for: "Use the following space ID to access the Profile API:"
    - Copy the Space ID shown (e.g., `spa_hvakucpPfsY4mZ18GCmVmf`) → This is your `SEGMENT_SPACE_ID`
    - ⚠️ **Important:** Space ID starts with `spa_`
 
-   ![Segment Space ID Location](./images/segment-space-id.png)
-
-**3. Create Unify API Access Token (on the same page as Space ID):**
-
-   Scroll down on the same API access page:
+   **Create Unify API Access Token** (same page, scroll down):
    - You'll see a table showing existing tokens (Token Name, Token ID, Created On)
    - Click **"Create API Access Token"** button
    - Give it a name (e.g., `TAC Profile API` or `TAC-Segment`)
@@ -309,8 +307,6 @@ TWILIO_VOICE_PUBLIC_DOMAIN=your-ngrok-domain.ngrok.app
    - **Copy the full token immediately** → This is your `SEGMENT_UNIFY_TOKEN`
    - ⚠️ **Save this token securely** - you won't be able to see it again
    - The token will appear in the table (showing only its ID, e.g., `70d938`)
-
-   ![Segment Unify Token Location](./images/segment-unify-token.png)
 
 **4. (Optional) Create Public API Token (for workspace management):**
    - In Segment Settings, navigate to **Access Management > Tokens**

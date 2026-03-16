@@ -80,24 +80,20 @@ TAC supports two profile service providers for identity resolution and event tra
    - Click **Unify settings** at the bottom
    - Click the **API access** tab
 
+   ![Segment Unify API Access Page](./images/segment-unify-api-access.png)
+
    **Get Space ID** (top of page):
    - Look for: "Use the following space ID to access the Profile API:"
    - Copy the Space ID (e.g., `spa_hvakucpPfsY4mZ18GCmVmf`)
    - Format **must start with `spa_`**
 
-   ![Segment Space ID Location](./images/segment-space-id.png)
-
-3. **Create Unify API Access Token** (same page as Space ID):
-
-   Scroll down on the same page:
+   **Create Unify API Access Token** (same page, scroll down):
    - View the tokens table (Token Name, Token ID, Created On)
    - Click **"Create API Access Token"**
    - Name it (e.g., `TAC Profile API` or `TAC-Segment`)
    - Select appropriate access level
    - Click **"Create"**
    - **Copy the full token immediately** (you won't see it again)
-
-   ![Segment Access Token Location](./images/segment-access-token.png)
 
 4. **Configure Environment Variables**:
    ```bash
