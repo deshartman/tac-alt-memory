@@ -202,10 +202,10 @@ var ConversationsCommunicationDataSchema = z.object({
       deliveryStatus: z.string().optional()
     })
   ),
-  channelId: z.string().optional(),
+  channelId: z.string().nullish(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
   // May be included for cross-event compatibility
   participantType: z.string().optional(),
   // May be included for cross-event compatibility
@@ -224,7 +224,7 @@ var ConversationsConversationDataSchema = z.object({
   name: z.string().nullable().optional(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
   // Profile ID may be included in conversation events
   participantType: z.string().optional(),
   // May be included for cross-event compatibility
@@ -253,7 +253,7 @@ var ConversationsParticipantDataSchema = z.object({
   type: z.enum(["HUMAN_AGENT", "CUSTOMER", "AI_AGENT"]).optional(),
   participantType: z.string().optional(),
   // Legacy field name (same as 'type')
-  profileId: z.string().optional(),
+  profileId: z.string().nullish(),
   serviceId: z.string().optional(),
   // Legacy/forward compatibility
   addresses: z.array(
@@ -709,7 +709,7 @@ var OpenAIToolSchema = z.object({
     parameters: JSONSchemaSchema
   })
 });
-z.object({
+var ToolContextSchema = z.object({
   conversationId: z.string().optional(),
   profileId: z.string().optional(),
   channel: z.string().optional(),
@@ -2437,6 +2437,36 @@ var BaseChannel = class {
     }
   }
   /**
+   * Extract conversation ID from validated webhook data
+   */
+  extractConversationIdFromData(data) {
+    const rawId = "conversationId" in data && data.conversationId || "id" in data && data.id;
+    if (!rawId || typeof rawId !== "string") {
+      throw new Error("No conversation ID found in webhook data");
+    }
+    if (!isConversationId(rawId)) {
+      throw new Error(`Invalid conversation ID format: ${rawId}`);
+    }
+    return rawId;
+  }
+  /**
+   * Extract profile ID from validated webhook data
+   */
+  extractProfileIdFromData(data) {
+    if (!("profileId" in data)) {
+      return void 0;
+    }
+    const rawProfileId = data.profileId;
+    if (!rawProfileId || typeof rawProfileId !== "string") {
+      return void 0;
+    }
+    if (!isProfileId(rawProfileId)) {
+      this.logger.warn({ profile_id: rawProfileId }, "Invalid profile ID format, ignoring");
+      return void 0;
+    }
+    return rawProfileId;
+  }
+  /**
    * Process Conversations webhook
    * This is the default implementation that handles standard Conversations events.
    * Channels can override to add channel-specific behavior.
@@ -2461,7 +2491,8 @@ var BaseChannel = class {
       }
       const webhookData = validationResult.data;
       const eventType = webhookData.eventType;
-      const conversationId = webhookData.data.conversationId ?? webhookData.data.id;
+      const conversationId = this.extractConversationIdFromData(webhookData.data);
+      const profileId = this.extractProfileIdFromData(webhookData.data);
       this.logger.info(
         {
           event_type: eventType,
@@ -2472,25 +2503,25 @@ var BaseChannel = class {
       );
       switch (eventType) {
         case "CONVERSATION_CREATED":
-          this.handleConversationCreated(webhookData);
+          this.handleConversationCreated(webhookData, conversationId, profileId);
           break;
         case "PARTICIPANT_ADDED":
-          this.handleParticipantAdded(webhookData);
+          this.handleParticipantAdded(webhookData, conversationId, profileId);
           break;
         case "PARTICIPANT_UPDATED":
-          this.handleParticipantUpdated(webhookData);
+          this.handleParticipantUpdated(webhookData, conversationId);
           break;
         case "PARTICIPANT_REMOVED":
-          this.handleParticipantRemoved(webhookData);
+          this.handleParticipantRemoved(webhookData, conversationId);
           break;
         case "COMMUNICATION_CREATED":
-          await this.handleCommunicationCreated(webhookData);
+          await this.handleCommunicationCreated(webhookData, conversationId, profileId);
           break;
         case "COMMUNICATION_UPDATED":
-          await this.handleCommunicationUpdated(webhookData);
+          await this.handleCommunicationUpdated(webhookData, conversationId);
           break;
         case "CONVERSATION_UPDATED":
-          await this.handleConversationUpdated(webhookData);
+          await this.handleConversationUpdated(webhookData, conversationId);
           break;
         default: {
           this.logger.warn(
@@ -2536,23 +2567,13 @@ var BaseChannel = class {
   /**
    * Handle CONVERSATION_CREATED event
    */
-  handleConversationCreated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in CONVERSATION_CREATED event");
-    }
-    this.startConversation(conversationId, profileId ?? void 0, payload.data.serviceId);
+  handleConversationCreated(payload, conversationId, profileId) {
+    this.startConversation(conversationId, profileId, payload.data.serviceId);
   }
   /**
    * Handle PARTICIPANT_ADDED event
    */
-  handleParticipantAdded(payload) {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in PARTICIPANT_ADDED event");
-    }
+  handleParticipantAdded(payload, conversationId, profileId) {
     if (this.isConversationActive(conversationId)) {
       const session = this.getConversationSession(conversationId);
       if (session && profileId) {
@@ -2562,17 +2583,13 @@ var BaseChannel = class {
         session.service_id = payload.data.serviceId;
       }
     } else {
-      this.startConversation(conversationId, profileId ?? void 0, payload.data.serviceId);
+      this.startConversation(conversationId, profileId, payload.data.serviceId);
     }
   }
   /**
    * Handle PARTICIPANT_UPDATED event
    */
-  handleParticipantUpdated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in PARTICIPANT_UPDATED event");
-    }
+  handleParticipantUpdated(payload, conversationId) {
     this.logger.debug(
       { conversation_id: conversationId, participant_type: payload.data.participantType },
       "Participant updated"
@@ -2581,11 +2598,7 @@ var BaseChannel = class {
   /**
    * Handle PARTICIPANT_REMOVED event
    */
-  handleParticipantRemoved(payload) {
-    const conversationId = this.extractConversationId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in PARTICIPANT_REMOVED event");
-    }
+  handleParticipantRemoved(payload, conversationId) {
     this.logger.info(
       { conversation_id: conversationId, participant_type: payload.data.participantType },
       "Participant removed from conversation"
@@ -2596,25 +2609,16 @@ var BaseChannel = class {
    * Override in channel-specific classes to add message handling logic
    */
   // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
-  async handleCommunicationCreated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in COMMUNICATION_CREATED event");
-    }
+  async handleCommunicationCreated(payload, conversationId, profileId) {
     if (!this.isConversationActive(conversationId)) {
-      const profileId = this.extractProfileId(payload);
-      this.startConversation(conversationId, profileId ?? void 0, payload.data.serviceId);
+      this.startConversation(conversationId, profileId, payload.data.serviceId);
     }
   }
   /**
    * Handle COMMUNICATION_UPDATED event
    */
   // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
-  async handleCommunicationUpdated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in COMMUNICATION_UPDATED event");
-    }
+  async handleCommunicationUpdated(payload, conversationId) {
     this.logger.debug(
       { conversation_id: conversationId, communication_id: payload.data.id },
       "Communication updated"
@@ -2623,11 +2627,7 @@ var BaseChannel = class {
   /**
    * Handle CONVERSATION_UPDATED event
    */
-  async handleConversationUpdated(payload) {
-    const conversationId = this.extractConversationId(payload);
-    if (!conversationId) {
-      throw new Error("Missing conversation ID in CONVERSATION_UPDATED event");
-    }
+  async handleConversationUpdated(payload, conversationId) {
     if (payload.data.status === "CLOSED") {
       this.logger.info(
         { conversation_id: conversationId, status: payload.data.status },
@@ -2742,34 +2742,6 @@ var BaseChannel = class {
     return payload !== null && payload !== void 0;
   }
   /**
-   * Extract conversation ID from Conversations webhook payload
-   */
-  extractConversationId(payload) {
-    const validationResult = this.validateConversationsWebhookPayload(payload);
-    if (!validationResult.success) {
-      return null;
-    }
-    const conversationId = validationResult.data.data.conversationId || validationResult.data.data.id;
-    if (conversationId && typeof conversationId === "string" && isConversationId(conversationId)) {
-      return conversationId;
-    }
-    return null;
-  }
-  /**
-   * Extract profile ID from Conversations webhook payload
-   */
-  extractProfileId(payload) {
-    const validationResult = this.validateConversationsWebhookPayload(payload);
-    if (!validationResult.success) {
-      return null;
-    }
-    const profileId = validationResult.data.data.profileId;
-    if (profileId && typeof profileId === "string" && isProfileId(profileId)) {
-      return profileId;
-    }
-    return null;
-  }
-  /**
    * Cleanup resources when shutting down
    */
   shutdown() {
@@ -2811,13 +2783,11 @@ var SMSChannel = class extends BaseChannel {
    * Handle COMMUNICATION_CREATED with SMS-specific logic
    * Override from base class to add message processing
    */
-  async handleCommunicationCreated(payload) {
-    await super.handleCommunicationCreated(payload);
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
+  async handleCommunicationCreated(payload, conversationId, profileId) {
+    await super.handleCommunicationCreated(payload, conversationId, profileId);
     const message = payload.data.content.text.trim();
     const author = payload.data.author.address || "unknown";
-    if (!conversationId || !message) {
+    if (!message) {
       return;
     }
     if (author === this.config.twilioPhoneNumber) {
@@ -2845,7 +2815,7 @@ var SMSChannel = class extends BaseChannel {
     if (this.smsCallbacks.onMessageReceived) {
       this.smsCallbacks.onMessageReceived({
         conversationId,
-        profileId: profileId ?? void 0,
+        profileId,
         message,
         author,
         userMemory
@@ -3455,6 +3425,20 @@ function handleFlexHandoffLogic(formData, flexWorkflowSid) {
   }
 }
 
+// packages/core/src/util/webhooks.ts
+function extractChannelFromWebhook(webhookData) {
+  if ("author" in webhookData && webhookData.author?.channel) {
+    return webhookData.author.channel.toLowerCase();
+  }
+  if ("addresses" in webhookData && Array.isArray(webhookData.addresses)) {
+    const addresses = webhookData.addresses;
+    if (addresses.length > 0 && addresses[0]?.channel) {
+      return addresses[0].channel.toLowerCase();
+    }
+  }
+  return void 0;
+}
+
 // packages/tools/src/lib/builder.ts
 var TACTool = class {
   constructor(name, description, parameters, implementation) {
@@ -3767,6 +3751,9 @@ var DEFAULT_CONFIG = {
     conversation: "/conversation",
     conversationRelayCallback: "/conversation-relay-callback"
   },
+  conversationRelayConfig: {
+    welcomeGreeting: "Hello! How can I assist you today?"
+  },
   development: false,
   validateWebhooks: true
 };
@@ -3776,7 +3763,20 @@ var TACServer = class {
   config;
   constructor(tac, config = {}) {
     this.tac = tac;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      // Deep merge webhookPaths to preserve defaults while allowing overrides
+      webhookPaths: {
+        ...DEFAULT_CONFIG.webhookPaths,
+        ...config.webhookPaths
+      },
+      // Deep merge conversationRelayConfig to preserve defaults while allowing overrides
+      conversationRelayConfig: {
+        ...DEFAULT_CONFIG.conversationRelayConfig,
+        ...config.conversationRelayConfig
+      }
+    };
     this.fastify = Fastify({
       logger: this.config.development ? {
         level: process.env.LOG_LEVEL || "info",
@@ -3837,23 +3837,6 @@ var TACServer = class {
     });
   }
   /**
-   * Extract channel string from webhook payload data
-   * Checks author.channel first (COMMUNICATION events),
-   * then addresses[0].channel (PARTICIPANT events)
-   */
-  extractChannelFromWebhook(webhookData) {
-    if ("author" in webhookData && webhookData.author?.channel) {
-      return webhookData.author.channel.toLowerCase();
-    }
-    if ("addresses" in webhookData && Array.isArray(webhookData.addresses)) {
-      const addresses = webhookData.addresses;
-      if (addresses.length > 0 && addresses[0]?.channel) {
-        return addresses[0].channel.toLowerCase();
-      }
-    }
-    return void 0;
-  }
-  /**
    * Setup routes
    */
   async setupRoutes() {
@@ -3873,7 +3856,7 @@ var TACServer = class {
           const payload = parseResult.data;
           const webhookData = payload.data;
           const author = "author" in webhookData ? webhookData.author : void 0;
-          const channelString = this.extractChannelFromWebhook(webhookData);
+          const channelString = extractChannelFromWebhook(webhookData);
           if (channelString && !author?.channel && "addresses" in webhookData) {
             this.fastify.log.debug(
               {
@@ -4189,6 +4172,6 @@ var TACServer = class {
   }
 };
 
-export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolContextSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, extractChannelFromWebhook, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

@@ -68,16 +68,16 @@ export class SMSChannel extends BaseChannel {
    * Override from base class to add message processing
    */
   protected override async handleCommunicationCreated(
-    payload: CommunicationWebhookPayload
+    payload: CommunicationWebhookPayload,
+    conversationId: ConversationId,
+    profileId: ProfileId | undefined
   ): Promise<void> {
     // Call parent to handle base logic (conversation initialization)
-    await super.handleCommunicationCreated(payload);
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
+    await super.handleCommunicationCreated(payload, conversationId, profileId);
     const message = payload.data.content.text.trim();
     const author = payload.data.author.address || 'unknown';
 
-    if (!conversationId || !message) {
+    if (!message) {
       return;
     }
 
@@ -113,7 +113,7 @@ export class SMSChannel extends BaseChannel {
     if (this.smsCallbacks.onMessageReceived) {
       this.smsCallbacks.onMessageReceived({
         conversationId,
-        profileId: profileId ?? undefined,
+        profileId,
         message,
         author,
         userMemory,

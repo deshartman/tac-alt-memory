@@ -78,6 +78,46 @@ export abstract class BaseChannel {
   public abstract processWebhook(payload: unknown): Promise<void>;
 
   /**
+   * Extract conversation ID from validated webhook data
+   */
+  private extractConversationIdFromData(data: ConversationsWebhookPayload['data']): ConversationId {
+    const rawId = ('conversationId' in data && data.conversationId) || ('id' in data && data.id);
+
+    if (!rawId || typeof rawId !== 'string') {
+      throw new Error('No conversation ID found in webhook data');
+    }
+
+    if (!isConversationId(rawId)) {
+      throw new Error(`Invalid conversation ID format: ${rawId}`);
+    }
+
+    return rawId;
+  }
+
+  /**
+   * Extract profile ID from validated webhook data
+   */
+  private extractProfileIdFromData(
+    data: ConversationsWebhookPayload['data']
+  ): ProfileId | undefined {
+    if (!('profileId' in data)) {
+      return undefined;
+    }
+
+    const rawProfileId = data.profileId;
+    if (!rawProfileId || typeof rawProfileId !== 'string') {
+      return undefined;
+    }
+
+    if (!isProfileId(rawProfileId)) {
+      this.logger.warn({ profile_id: rawProfileId }, 'Invalid profile ID format, ignoring');
+      return undefined;
+    }
+
+    return rawProfileId;
+  }
+
+  /**
    * Process Conversations webhook
    * This is the default implementation that handles standard Conversations events.
    * Channels can override to add channel-specific behavior.
@@ -106,7 +146,10 @@ export abstract class BaseChannel {
       // TypeScript now knows payload is ConversationsWebhookPayload
       const webhookData = validationResult.data;
       const eventType = webhookData.eventType;
-      const conversationId = webhookData.data.conversationId ?? webhookData.data.id;
+
+      // Extract IDs once after validation (prevents repeated Zod parsing in handlers)
+      const conversationId = this.extractConversationIdFromData(webhookData.data);
+      const profileId = this.extractProfileIdFromData(webhookData.data);
 
       this.logger.info(
         {
@@ -119,31 +162,31 @@ export abstract class BaseChannel {
 
       switch (eventType) {
         case 'CONVERSATION_CREATED':
-          this.handleConversationCreated(webhookData);
+          this.handleConversationCreated(webhookData, conversationId, profileId);
           break;
 
         case 'PARTICIPANT_ADDED':
-          this.handleParticipantAdded(webhookData);
+          this.handleParticipantAdded(webhookData, conversationId, profileId);
           break;
 
         case 'PARTICIPANT_UPDATED':
-          this.handleParticipantUpdated(webhookData);
+          this.handleParticipantUpdated(webhookData, conversationId);
           break;
 
         case 'PARTICIPANT_REMOVED':
-          this.handleParticipantRemoved(webhookData);
+          this.handleParticipantRemoved(webhookData, conversationId);
           break;
 
         case 'COMMUNICATION_CREATED':
-          await this.handleCommunicationCreated(webhookData);
+          await this.handleCommunicationCreated(webhookData, conversationId, profileId);
           break;
 
         case 'COMMUNICATION_UPDATED':
-          await this.handleCommunicationUpdated(webhookData);
+          await this.handleCommunicationUpdated(webhookData, conversationId);
           break;
 
         case 'CONVERSATION_UPDATED':
-          await this.handleConversationUpdated(webhookData);
+          await this.handleConversationUpdated(webhookData, conversationId);
           break;
 
         default: {
@@ -197,28 +240,22 @@ export abstract class BaseChannel {
   /**
    * Handle CONVERSATION_CREATED event
    */
-  protected handleConversationCreated(payload: ConversationWebhookPayload): void {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in CONVERSATION_CREATED event');
-    }
-
-    this.startConversation(conversationId, profileId ?? undefined, payload.data.serviceId);
+  protected handleConversationCreated(
+    payload: ConversationWebhookPayload,
+    conversationId: ConversationId,
+    profileId: ProfileId | undefined
+  ): void {
+    this.startConversation(conversationId, profileId, payload.data.serviceId);
   }
 
   /**
    * Handle PARTICIPANT_ADDED event
    */
-  protected handleParticipantAdded(payload: ParticipantWebhookPayload): void {
-    const conversationId = this.extractConversationId(payload);
-    const profileId = this.extractProfileId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in PARTICIPANT_ADDED event');
-    }
-
+  protected handleParticipantAdded(
+    payload: ParticipantWebhookPayload,
+    conversationId: ConversationId,
+    profileId: ProfileId | undefined
+  ): void {
     // Update or initialize conversation
     if (this.isConversationActive(conversationId)) {
       const session = this.getConversationSession(conversationId);
@@ -229,20 +266,17 @@ export abstract class BaseChannel {
         session.service_id = payload.data.serviceId;
       }
     } else {
-      this.startConversation(conversationId, profileId ?? undefined, payload.data.serviceId);
+      this.startConversation(conversationId, profileId, payload.data.serviceId);
     }
   }
 
   /**
    * Handle PARTICIPANT_UPDATED event
    */
-  protected handleParticipantUpdated(payload: ParticipantWebhookPayload): void {
-    const conversationId = this.extractConversationId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in PARTICIPANT_UPDATED event');
-    }
-
+  protected handleParticipantUpdated(
+    payload: ParticipantWebhookPayload,
+    conversationId: ConversationId
+  ): void {
     this.logger.debug(
       { conversation_id: conversationId, participant_type: payload.data.participantType },
       'Participant updated'
@@ -252,13 +286,10 @@ export abstract class BaseChannel {
   /**
    * Handle PARTICIPANT_REMOVED event
    */
-  protected handleParticipantRemoved(payload: ParticipantWebhookPayload): void {
-    const conversationId = this.extractConversationId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in PARTICIPANT_REMOVED event');
-    }
-
+  protected handleParticipantRemoved(
+    payload: ParticipantWebhookPayload,
+    conversationId: ConversationId
+  ): void {
     this.logger.info(
       { conversation_id: conversationId, participant_type: payload.data.participantType },
       'Participant removed from conversation'
@@ -270,17 +301,14 @@ export abstract class BaseChannel {
    * Override in channel-specific classes to add message handling logic
    */
   // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
-  protected async handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void> {
-    const conversationId = this.extractConversationId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in COMMUNICATION_CREATED event');
-    }
-
+  protected async handleCommunicationCreated(
+    payload: CommunicationWebhookPayload,
+    conversationId: ConversationId,
+    profileId: ProfileId | undefined
+  ): Promise<void> {
     // Initialize conversation if needed
     if (!this.isConversationActive(conversationId)) {
-      const profileId = this.extractProfileId(payload);
-      this.startConversation(conversationId, profileId ?? undefined, payload.data.serviceId);
+      this.startConversation(conversationId, profileId, payload.data.serviceId);
     }
 
     // Channels override this to add message-specific logic
@@ -290,13 +318,10 @@ export abstract class BaseChannel {
    * Handle COMMUNICATION_UPDATED event
    */
   // eslint-disable-next-line @typescript-eslint/require-await -- Base implementation is synchronous, but subclasses may need async
-  protected async handleCommunicationUpdated(payload: CommunicationWebhookPayload): Promise<void> {
-    const conversationId = this.extractConversationId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in COMMUNICATION_UPDATED event');
-    }
-
+  protected async handleCommunicationUpdated(
+    payload: CommunicationWebhookPayload,
+    conversationId: ConversationId
+  ): Promise<void> {
     this.logger.debug(
       { conversation_id: conversationId, communication_id: payload.data.id },
       'Communication updated'
@@ -306,13 +331,10 @@ export abstract class BaseChannel {
   /**
    * Handle CONVERSATION_UPDATED event
    */
-  protected async handleConversationUpdated(payload: ConversationWebhookPayload): Promise<void> {
-    const conversationId = this.extractConversationId(payload);
-
-    if (!conversationId) {
-      throw new Error('Missing conversation ID in CONVERSATION_UPDATED event');
-    }
-
+  protected async handleConversationUpdated(
+    payload: ConversationWebhookPayload,
+    conversationId: ConversationId
+  ): Promise<void> {
     // Check if conversation is closed
     if (payload.data.status === 'CLOSED') {
       this.logger.info(
@@ -454,45 +476,6 @@ export abstract class BaseChannel {
    */
   protected validateWebhookPayload(payload: unknown): boolean {
     return payload !== null && payload !== undefined;
-  }
-
-  /**
-   * Extract conversation ID from Conversations webhook payload
-   */
-  protected extractConversationId(payload: unknown): ConversationId | null {
-    const validationResult = this.validateConversationsWebhookPayload(payload);
-
-    if (!validationResult.success) {
-      return null;
-    }
-
-    const conversationId =
-      validationResult.data.data.conversationId || validationResult.data.data.id;
-
-    if (conversationId && typeof conversationId === 'string' && isConversationId(conversationId)) {
-      return conversationId;
-    }
-
-    return null;
-  }
-
-  /**
-   * Extract profile ID from Conversations webhook payload
-   */
-  protected extractProfileId(payload: unknown): ProfileId | null {
-    const validationResult = this.validateConversationsWebhookPayload(payload);
-
-    if (!validationResult.success) {
-      return null;
-    }
-
-    const profileId = validationResult.data.data.profileId;
-
-    if (profileId && typeof profileId === 'string' && isProfileId(profileId)) {
-      return profileId;
-    }
-
-    return null;
   }
 
   /**

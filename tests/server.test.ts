@@ -447,6 +447,53 @@ describe('TACServer Participant Event Routing', () => {
     expect(response.status).toBe(200);
   });
 
+  it('should handle PARTICIPANT_ADDED with null profileId', async () => {
+    const webhookPayload = {
+      eventType: 'PARTICIPANT_ADDED',
+      data: {
+        id: 'PAtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        name: 'Customer',
+        type: 'CUSTOMER',
+        profileId: null,
+        addresses: [{ channel: 'SMS', address: '+15551234567' }],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('should handle COMMUNICATION_CREATED with null channelId and profileId', async () => {
+    const webhookPayload = {
+      eventType: 'COMMUNICATION_CREATED',
+      data: {
+        id: 'CMtest123',
+        conversationId: 'CHtest456',
+        accountId: 'ACtest123456789',
+        channelId: null,
+        profileId: null,
+        content: { type: 'TEXT', text: 'Hello' },
+        author: { address: '+15551234567', channel: 'SMS' },
+        recipients: [],
+      },
+    };
+
+    const response = await fetch(`http://localhost:${currentPort}/conversation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookPayload),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
   it('should route PARTICIPANT_UPDATED with addresses', async () => {
     const webhookPayload = {
       eventType: 'PARTICIPANT_UPDATED',

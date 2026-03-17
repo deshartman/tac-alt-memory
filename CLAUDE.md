@@ -44,8 +44,8 @@ getting_started/  # Example apps (OpenAI integration)
 
 ### Channel Implementation
 
-- **SMS Channel**: Direct Twilio webhook processing with TwiML responses
-- **Voice Channel**: Bi-directional WebSocket + TwiML for real-time audio streaming
+- **SMS Channel**: Processes Conversations Configuration webhooks via `/conversation` endpoint; sends responses via Twilio Messages API
+- **Voice Channel**: Bi-directional WebSocket + TwiML for real-time audio streaming via `/conversation` endpoint
 - **Memory Integration**: Automatic conversation context storage and retrieval
 
 ## Code Conventions
@@ -81,14 +81,14 @@ TWILIO_ACCOUNT_SID=your_account_sid
 TWILIO_AUTH_TOKEN=your_auth_token
 TWILIO_PHONE_NUMBER=your_twilio_phone_number
 CONVERSATION_SERVICE_ID=your_conversation_service_id
+TWILIO_API_KEY=your_api_key               # Required by TACConfig
+TWILIO_API_TOKEN=your_api_token           # Required by TACConfig
 ```
 
 ### Optional Environment Variables
 ```bash
 ENVIRONMENT=prod                          # Defaults to 'prod' if not specified
 MEMORY_STORE_ID=your_memory_store_id      # For user profiles and conversation history
-TWILIO_API_KEY=your_api_key               # Required if using Memory
-TWILIO_API_TOKEN=your_api_token           # Required if using Memory
 OPENAI_API_KEY=your_openai_key            # For OpenAI examples
 VOICE_PUBLIC_DOMAIN=your_ngrok_domain     # Required for voice channel
 ```
