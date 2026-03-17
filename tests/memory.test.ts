@@ -24,6 +24,7 @@ describe('Memory Functionality', () => {
   const getTestConfigWithMemory = () => ({
     ...getTestConfigWithoutMemory(),
     memoryStoreId: 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg',
+    profileServiceProvider: 'memora' as const,
   });
 
   describe('isMemoryEnabled()', () => {

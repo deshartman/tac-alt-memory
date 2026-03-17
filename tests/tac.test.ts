@@ -77,7 +77,21 @@ describe('TAC Core', () => {
       expect(tac.getConversationClient()).toBeDefined();
     });
 
-    it('should initialize memory client when memoryStoreId is provided', () => {
+    it('should initialize memory client when memoryStoreId is provided with Memora provider', () => {
+      const configWithMemory = {
+        ...getTestConfig(),
+        memoryStoreId: 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg',
+        profileServiceProvider: 'memora' as const,
+      };
+      const config = new TACConfig(configWithMemory);
+      const tac = new TAC({ config });
+
+      expect(tac.getMemoryClient()).toBeDefined();
+      expect(tac.getProfileService()).toBeDefined();
+      expect(tac.isMemoryEnabled()).toBe(true);
+    });
+
+    it('should not initialize memory client without profileServiceProvider', () => {
       const configWithMemory = {
         ...getTestConfig(),
         memoryStoreId: 'mem_service_01kbjqhhdpft0tbp21jt4ktbxg',
@@ -85,7 +99,49 @@ describe('TAC Core', () => {
       const config = new TACConfig(configWithMemory);
       const tac = new TAC({ config });
 
-      expect(tac.getMemoryClient()).toBeDefined();
+      expect(tac.getMemoryClient()).toBeUndefined();
+      expect(tac.getProfileService()).toBeUndefined();
+      expect(tac.isMemoryEnabled()).toBe(false);
+    });
+
+    it('should initialize Segment profile service when configured', () => {
+      const configWithSegment = {
+        ...getTestConfig(),
+        profileServiceProvider: 'segment' as const,
+        segmentWriteKey: 'test_write_key_123',
+        segmentSpaceId: 'test_space_id',
+        segmentAccessToken: 'test_access_token',
+      };
+      const config = new TACConfig(configWithSegment);
+      const tac = new TAC({ config });
+
+      expect(tac.getMemoryClient()).toBeUndefined();
+      expect(tac.getProfileService()).toBeDefined();
+      expect(tac.isMemoryEnabled()).toBe(false);
+    });
+
+    it('should throw error when Segment provider configured without write key', () => {
+      const configWithSegment = {
+        ...getTestConfig(),
+        profileServiceProvider: 'segment' as const,
+      };
+
+      expect(() => {
+        const config = new TACConfig(configWithSegment);
+        new TAC({ config });
+      }).toThrow('SEGMENT_WRITE_KEY is required');
+    });
+
+    it('should throw error when Memora provider configured without memoryStoreId', () => {
+      const configWithMemora = {
+        ...getTestConfig(),
+        profileServiceProvider: 'memora' as const,
+      };
+
+      expect(() => {
+        const config = new TACConfig(configWithMemora);
+        new TAC({ config });
+      }).toThrow('MEMORY_STORE_ID is required');
     });
 
     it('should start with no channels (until explicitly registered)', () => {
