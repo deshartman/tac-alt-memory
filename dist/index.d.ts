@@ -4618,6 +4618,14 @@ declare abstract class BaseChannel {
      */
     abstract processWebhook(payload: unknown): Promise<void>;
     /**
+     * Extract conversation ID from validated webhook data
+     */
+    private extractConversationIdFromData;
+    /**
+     * Extract profile ID from validated webhook data
+     */
+    private extractProfileIdFromData;
+    /**
      * Process Conversations webhook
      * This is the default implementation that handles standard Conversations events.
      * Channels can override to add channel-specific behavior.
@@ -4637,32 +4645,32 @@ declare abstract class BaseChannel {
     /**
      * Handle CONVERSATION_CREATED event
      */
-    protected handleConversationCreated(payload: ConversationWebhookPayload): void;
+    protected handleConversationCreated(payload: ConversationWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): void;
     /**
      * Handle PARTICIPANT_ADDED event
      */
-    protected handleParticipantAdded(payload: ParticipantWebhookPayload): void;
+    protected handleParticipantAdded(payload: ParticipantWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): void;
     /**
      * Handle PARTICIPANT_UPDATED event
      */
-    protected handleParticipantUpdated(payload: ParticipantWebhookPayload): void;
+    protected handleParticipantUpdated(payload: ParticipantWebhookPayload, conversationId: ConversationId): void;
     /**
      * Handle PARTICIPANT_REMOVED event
      */
-    protected handleParticipantRemoved(payload: ParticipantWebhookPayload): void;
+    protected handleParticipantRemoved(payload: ParticipantWebhookPayload, conversationId: ConversationId): void;
     /**
      * Handle COMMUNICATION_CREATED event
      * Override in channel-specific classes to add message handling logic
      */
-    protected handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void>;
+    protected handleCommunicationCreated(payload: CommunicationWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): Promise<void>;
     /**
      * Handle COMMUNICATION_UPDATED event
      */
-    protected handleCommunicationUpdated(payload: CommunicationWebhookPayload): Promise<void>;
+    protected handleCommunicationUpdated(payload: CommunicationWebhookPayload, conversationId: ConversationId): Promise<void>;
     /**
      * Handle CONVERSATION_UPDATED event
      */
-    protected handleConversationUpdated(payload: ConversationWebhookPayload): Promise<void>;
+    protected handleConversationUpdated(payload: ConversationWebhookPayload, conversationId: ConversationId): Promise<void>;
     /**
      * Send a response back to the user (implemented by subclasses)
      */
@@ -4695,14 +4703,6 @@ declare abstract class BaseChannel {
      * Validate webhook payload (override in subclasses for specific validation)
      */
     protected validateWebhookPayload(payload: unknown): boolean;
-    /**
-     * Extract conversation ID from Conversations webhook payload
-     */
-    protected extractConversationId(payload: unknown): ConversationId | null;
-    /**
-     * Extract profile ID from Conversations webhook payload
-     */
-    protected extractProfileId(payload: unknown): ProfileId | null;
     /**
      * Cleanup resources when shutting down
      */
@@ -4916,7 +4916,7 @@ declare class SMSChannel extends BaseChannel {
      * Handle COMMUNICATION_CREATED with SMS-specific logic
      * Override from base class to add message processing
      */
-    protected handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void>;
+    protected handleCommunicationCreated(payload: CommunicationWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): Promise<void>;
     /**
      * Send SMS response using Twilio Messages API
      * Note: This is a workaround until Conversations Service supports sending messages
