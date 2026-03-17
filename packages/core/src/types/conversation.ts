@@ -225,9 +225,9 @@ export const ConversationsCommunicationDataSchema = z.object({
       deliveryStatus: z.string().optional(),
     })
   ),
-  channelId: z.string().optional(),
+  channelId: z.string().nullish(),
   serviceId: z.string().optional(), // Legacy/forward compatibility
-  profileId: z.string().optional(), // May be included for cross-event compatibility
+  profileId: z.string().nullish(), // May be included for cross-event compatibility
   participantType: z.string().optional(), // May be included for cross-event compatibility
   status: z.enum(['ACTIVE', 'INACTIVE', 'CLOSED']).optional(), // May be included for cross-event compatibility
   createdAt: z.string().nullish(),
@@ -252,7 +252,7 @@ export const ConversationsConversationDataSchema = z
     status: z.enum(['ACTIVE', 'INACTIVE', 'CLOSED']).optional(),
     name: z.string().nullable().optional(),
     serviceId: z.string().optional(), // Legacy/forward compatibility
-    profileId: z.string().nullish(), // Profile ID may be included in conversation events (can be null)
+    profileId: z.string().nullish(), // Profile ID may be included in conversation events
     participantType: z.string().optional(), // May be included for cross-event compatibility
     // Communication-specific fields (optional for cross-event compatibility)
     author: z
@@ -290,7 +290,7 @@ export const ConversationsParticipantDataSchema = z.object({
   name: z.string(),
   type: z.enum(['HUMAN_AGENT', 'CUSTOMER', 'AI_AGENT']).optional(),
   participantType: z.string().optional(), // Legacy field name (same as 'type')
-  profileId: z.string().nullish(), // Can be null in some webhook events
+  profileId: z.string().nullish(),
   serviceId: z.string().optional(), // Legacy/forward compatibility
   addresses: z
     .array(

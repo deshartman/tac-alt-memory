@@ -130,7 +130,7 @@ TWILIO_API_TOKEN=xxxx
 
 ## Quick Examples
 
-Create Memory and Conversation Configuration services through the [Twilio Console](https://console.twilio.com), then configure your `.env` file with the required credentials.
+Create Memory and Conversation Configuration services through [Twilio 1Console](https://1console.twilio.com), then configure your `.env` file with the required credentials.
 
 Here's a minimal example to get started:
 

@@ -3,6 +3,7 @@ node_modules/
 .env
 .DS_Store
 *.log
+*.db
 
 # Build artifacts (packages)
 packages/*/dist/

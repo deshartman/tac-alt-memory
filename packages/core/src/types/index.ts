@@ -24,6 +24,7 @@ export {
   type ToolFunction,
   OpenAIToolSchema,
   type OpenAITool,
+  ToolContextSchema,
   type ToolContext,
   ToolExecutionResultSchema,
   type ToolExecutionResult,

@@ -1449,9 +1449,9 @@ declare const ConversationsCommunicationDataSchema: z.ZodObject<{
         participantId?: string | undefined;
         deliveryStatus?: string | undefined;
     }>, "many">;
-    channelId: z.ZodOptional<z.ZodString>;
+    channelId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     serviceId: z.ZodOptional<z.ZodString>;
-    profileId: z.ZodOptional<z.ZodString>;
+    profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     participantType: z.ZodOptional<z.ZodString>;
     status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
     createdAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1479,8 +1479,8 @@ declare const ConversationsCommunicationDataSchema: z.ZodObject<{
     status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    channelId?: string | undefined;
-    profileId?: string | undefined;
+    channelId?: string | null | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }, {
@@ -1506,8 +1506,8 @@ declare const ConversationsCommunicationDataSchema: z.ZodObject<{
     status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
     createdAt?: string | null | undefined;
     updatedAt?: string | null | undefined;
-    channelId?: string | undefined;
-    profileId?: string | undefined;
+    channelId?: string | null | undefined;
+    profileId?: string | null | undefined;
     serviceId?: string | undefined;
     participantType?: string | undefined;
 }>;
@@ -1810,9 +1810,9 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
             participantId?: string | undefined;
             deliveryStatus?: string | undefined;
         }>, "many">;
-        channelId: z.ZodOptional<z.ZodString>;
+        channelId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         createdAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1840,8 +1840,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -1867,8 +1867,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -1897,8 +1897,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -1928,8 +1928,8 @@ declare const CommunicationWebhookPayloadSchema: z.ZodObject<{
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2359,9 +2359,9 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
             participantId?: string | undefined;
             deliveryStatus?: string | undefined;
         }>, "many">;
-        channelId: z.ZodOptional<z.ZodString>;
+        channelId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         serviceId: z.ZodOptional<z.ZodString>;
-        profileId: z.ZodOptional<z.ZodString>;
+        profileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         participantType: z.ZodOptional<z.ZodString>;
         status: z.ZodOptional<z.ZodEnum<["ACTIVE", "INACTIVE", "CLOSED"]>>;
         createdAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -2389,8 +2389,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }, {
@@ -2416,8 +2416,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     }>;
@@ -2446,8 +2446,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -2477,8 +2477,8 @@ declare const ConversationsWebhookPayloadSchema: z.ZodDiscriminatedUnion<"eventT
         status?: "ACTIVE" | "INACTIVE" | "CLOSED" | undefined;
         createdAt?: string | null | undefined;
         updatedAt?: string | null | undefined;
-        channelId?: string | undefined;
-        profileId?: string | undefined;
+        channelId?: string | null | undefined;
+        profileId?: string | null | undefined;
         serviceId?: string | undefined;
         participantType?: string | undefined;
     };
@@ -4648,6 +4648,14 @@ declare abstract class BaseChannel {
      */
     abstract processWebhook(payload: unknown): Promise<void>;
     /**
+     * Extract conversation ID from validated webhook data
+     */
+    private extractConversationIdFromData;
+    /**
+     * Extract profile ID from validated webhook data
+     */
+    private extractProfileIdFromData;
+    /**
      * Process Conversations webhook
      * This is the default implementation that handles standard Conversations events.
      * Channels can override to add channel-specific behavior.
@@ -4667,32 +4675,32 @@ declare abstract class BaseChannel {
     /**
      * Handle CONVERSATION_CREATED event
      */
-    protected handleConversationCreated(payload: ConversationWebhookPayload): void;
+    protected handleConversationCreated(payload: ConversationWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): void;
     /**
      * Handle PARTICIPANT_ADDED event
      */
-    protected handleParticipantAdded(payload: ParticipantWebhookPayload): void;
+    protected handleParticipantAdded(payload: ParticipantWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): void;
     /**
      * Handle PARTICIPANT_UPDATED event
      */
-    protected handleParticipantUpdated(payload: ParticipantWebhookPayload): void;
+    protected handleParticipantUpdated(payload: ParticipantWebhookPayload, conversationId: ConversationId): void;
     /**
      * Handle PARTICIPANT_REMOVED event
      */
-    protected handleParticipantRemoved(payload: ParticipantWebhookPayload): void;
+    protected handleParticipantRemoved(payload: ParticipantWebhookPayload, conversationId: ConversationId): void;
     /**
      * Handle COMMUNICATION_CREATED event
      * Override in channel-specific classes to add message handling logic
      */
-    protected handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void>;
+    protected handleCommunicationCreated(payload: CommunicationWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): Promise<void>;
     /**
      * Handle COMMUNICATION_UPDATED event
      */
-    protected handleCommunicationUpdated(payload: CommunicationWebhookPayload): Promise<void>;
+    protected handleCommunicationUpdated(payload: CommunicationWebhookPayload, conversationId: ConversationId): Promise<void>;
     /**
      * Handle CONVERSATION_UPDATED event
      */
-    protected handleConversationUpdated(payload: ConversationWebhookPayload): Promise<void>;
+    protected handleConversationUpdated(payload: ConversationWebhookPayload, conversationId: ConversationId): Promise<void>;
     /**
      * Send a response back to the user (implemented by subclasses)
      */
@@ -4725,14 +4733,6 @@ declare abstract class BaseChannel {
      * Validate webhook payload (override in subclasses for specific validation)
      */
     protected validateWebhookPayload(payload: unknown): boolean;
-    /**
-     * Extract conversation ID from Conversations webhook payload
-     */
-    protected extractConversationId(payload: unknown): ConversationId | null;
-    /**
-     * Extract profile ID from Conversations webhook payload
-     */
-    protected extractProfileId(payload: unknown): ProfileId | null;
     /**
      * Cleanup resources when shutting down
      */
@@ -5103,7 +5103,7 @@ declare class SMSChannel extends BaseChannel {
      * Handle COMMUNICATION_CREATED with SMS-specific logic
      * Override from base class to add message processing
      */
-    protected handleCommunicationCreated(payload: CommunicationWebhookPayload): Promise<void>;
+    protected handleCommunicationCreated(payload: CommunicationWebhookPayload, conversationId: ConversationId, profileId: ProfileId | undefined): Promise<void>;
     /**
      * Send SMS response using Twilio Messages API
      * Note: This is a workaround until Conversations Service supports sending messages
@@ -5291,6 +5291,18 @@ interface FlexHandoffResult {
  * @returns Result with status, content (TwiML or error), and content type
  */
 declare function handleFlexHandoffLogic(formData: Record<string, string>, flexWorkflowSid: string | undefined): FlexHandoffResult;
+
+/**
+ * Extracts the channel identifier from a Conversations webhook payload.
+ *
+ * Tries multiple strategies:
+ * 1. author.channel (COMMUNICATION_* events)
+ * 2. addresses[0].channel (PARTICIPANT_* events)
+ *
+ * @param webhookData - The webhook payload data
+ * @returns Lowercase channel string ('sms', 'voice') or undefined
+ */
+declare function extractChannelFromWebhook(webhookData: ConversationsWebhookPayload['data']): string | undefined;
 
 /**
  * Processor for Conversation Intelligence operator result webhooks
@@ -5540,12 +5552,6 @@ declare class TACServer {
      */
     private registerWebhookValidation;
     /**
-     * Extract channel string from webhook payload data
-     * Checks author.channel first (COMMUNICATION events),
-     * then addresses[0].channel (PARTICIPANT events)
-     */
-    private extractChannelFromWebhook;
-    /**
      * Setup routes
      */
     private setupRoutes;
@@ -5563,4 +5569,4 @@ declare class TACServer {
     stop(): Promise<void>;
 }
 
-export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, MemoraProfileService, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type ProfileService, type ProfileServiceProvider, ProfileServiceProviderSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, SegmentProfileService, type SegmentProfileServiceConfig, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, MemoraProfileService, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type ProfileService, type ProfileServiceProvider, ProfileServiceProviderSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, SegmentProfileService, type SegmentProfileServiceConfig, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, ToolContextSchema, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, extractChannelFromWebhook, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
