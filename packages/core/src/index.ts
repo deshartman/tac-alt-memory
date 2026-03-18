@@ -42,6 +42,13 @@ export type { VoiceChannelEvents } from './channels/voice';
 export { handleFlexHandoffLogic } from './util/flex';
 export type { FlexHandoffResult } from './util/flex';
 export { extractChannelFromWebhook } from './util/webhooks';
+export { WebhookRouter } from './util/webhook-router';
+export type {
+  WebhookRoutingResult,
+  WebhookRoutingSuccess,
+  WebhookRoutingSkip,
+  WebhookRoutingError,
+} from './util/webhook-router';
 
 // Conversation Intelligence processor
 export { OperatorResultProcessor } from './lib/operator-result-processor';

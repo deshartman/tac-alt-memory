@@ -5118,6 +5118,110 @@ declare function handleFlexHandoffLogic(formData: Record<string, string>, flexWo
 declare function extractChannelFromWebhook(webhookData: ConversationsWebhookPayload['data']): string | undefined;
 
 /**
+ * Webhook routing result - discriminated union for type safety
+ */
+type WebhookRoutingResult = WebhookRoutingSuccess | WebhookRoutingSkip | WebhookRoutingError;
+/**
+ * Successful routing - webhook should be processed by the returned channel
+ */
+interface WebhookRoutingSuccess {
+    status: 'success';
+    channel: BaseChannel;
+    channelType: ChannelType;
+    conversationId: string;
+    eventType: string;
+    shouldProcess: true;
+    payload: ConversationsWebhookPayload;
+}
+/**
+ * Skipped routing - webhook acknowledged but not processed (e.g., lifecycle events)
+ */
+interface WebhookRoutingSkip {
+    status: 'skip';
+    reason: string;
+    eventType: string;
+    conversationId: string | undefined;
+    shouldProcess: false;
+}
+/**
+ * Routing error - webhook validation or configuration error
+ */
+interface WebhookRoutingError {
+    status: 'error';
+    error: string;
+    errorType: 'validation' | 'unknown_channel' | 'channel_not_registered' | 'internal';
+    eventType?: string;
+    conversationId?: string;
+    channelType?: string;
+    shouldProcess: false;
+}
+/**
+ * WebhookRouter - Routes Conversations webhook payloads to appropriate channels
+ *
+ * Responsibilities:
+ * - Validate webhook payload structure with Zod
+ * - Extract channel information from various event types
+ * - Route lifecycle events to owning channels
+ * - Return structured routing decisions
+ *
+ * NOT responsible for:
+ * - HTTP request/response handling
+ * - Logging (returns data for caller to log)
+ * - Webhook signature validation
+ * - Calling channel.processWebhook() (returns target channel)
+ *
+ * @example
+ * ```typescript
+ * const router = new WebhookRouter(tac);
+ * const result = router.route(webhookPayload);
+ *
+ * switch (result.status) {
+ *   case 'success':
+ *     await result.channel.processWebhook(result.payload);
+ *     return { status: 'ok' };
+ *   case 'skip':
+ *     logger.info(result.reason);
+ *     return { status: 'ok' };
+ *   case 'error':
+ *     logger.error(result.error);
+ *     return { error: result.error };
+ * }
+ * ```
+ */
+declare class WebhookRouter {
+    private readonly tac;
+    constructor(tac: TAC);
+    /**
+     * Route a webhook payload to the appropriate channel
+     *
+     * @param payload - Raw webhook payload (unknown type for validation)
+     * @returns Structured routing result indicating success, skip, or error
+     */
+    route(payload: unknown): WebhookRoutingResult;
+    /**
+     * Handle lifecycle events (CONVERSATION_CREATED/UPDATED) that lack channel info
+     *
+     * Strategy:
+     * - Find which channel owns this conversation via isConversationActive()
+     * - If found, route to that channel
+     * - If not found (e.g., CONVERSATION_CREATED before first message), skip processing
+     */
+    private routeLifecycleEvent;
+    /**
+     * Find which channel owns a conversation
+     */
+    private findChannelByConversation;
+    /**
+     * Extract conversation ID from webhook data
+     */
+    private extractConversationId;
+    /**
+     * Type guard for valid channel types
+     */
+    private isValidChannelType;
+}
+
+/**
  * Processor for Conversation Intelligence operator result webhooks
  *
  * Processes operator results from CI and creates observations or summaries
@@ -5382,4 +5486,4 @@ declare class TACServer {
     stop(): Promise<void>;
 }
 
-export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, ToolContextSchema, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, extractChannelFromWebhook, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { type AuthorInfo, AuthorInfoSchema, BaseChannel, type BaseChannelEvents, type BuiltInToolName, BuiltInTools, type ChannelType, ChannelTypeSchema, type CintelParticipant, CintelParticipantSchema, type Communication, type CommunicationContent, CommunicationContentSchema, type CommunicationParticipant, CommunicationParticipantSchema, CommunicationSchema, type CommunicationWebhookPayload, CommunicationWebhookPayloadSchema, type ConversationAddress, ConversationAddressSchema, ConversationClient, type ConversationEndedCallback, type ConversationId, type ConversationIntelligenceConfig, ConversationIntelligenceConfigSchema, type ConversationParticipant, ConversationParticipantSchema, type ConversationRelayAttributes, ConversationRelayAttributesSchema, type ConversationRelayCallbackPayload, ConversationRelayCallbackPayloadSchema, type ConversationRelayConfig, ConversationRelayConfigSchema, type ConversationResponse, ConversationResponseSchema, type ConversationSession, ConversationSessionSchema, type ConversationSummaryItem, ConversationSummaryItemSchema, type ConversationWebhookPayload, ConversationWebhookPayloadSchema, type ConversationsCommunicationData, ConversationsCommunicationDataSchema, type ConversationsConversationData, ConversationsConversationDataSchema, type ConversationsParticipantData, ConversationsParticipantDataSchema, type ConversationsWebhookPayload, ConversationsWebhookPayloadSchema, type CreateConversationSummariesResponse, CreateConversationSummariesResponseSchema, type CreateObservationResponse, CreateObservationResponseSchema, type CustomParameters, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, type Environment, EnvironmentSchema, EnvironmentVariables, type ExecutionDetails, ExecutionDetailsSchema, type FlexHandoffResult, type HandoffCallback, type HandoffData, HandoffDataSchema, type IntelligenceConfiguration, IntelligenceConfigurationSchema, type InterruptCallback, type InterruptMessage, InterruptMessageSchema, type JSONSchema, JSONSchemaSchema, type KnowledgeBase, KnowledgeBaseSchema, type KnowledgeBaseStatus, KnowledgeBaseStatusSchema, type KnowledgeChunkResult, KnowledgeChunkResultSchema, KnowledgeClient, type KnowledgeSearchResponse, KnowledgeSearchResponseSchema, type LanguageAttributes, LanguageAttributesSchema, type Logger, type MemoryChannelType, MemoryChannelTypeSchema, MemoryClient, type MemoryCommunication, type MemoryCommunicationContent, MemoryCommunicationContentSchema, MemoryCommunicationSchema, type MemoryDeliveryStatus, MemoryDeliveryStatusSchema, type MemoryParticipant, MemoryParticipantSchema, type MemoryParticipantType, MemoryParticipantTypeSchema, type MemoryRetrievalRequest, MemoryRetrievalRequestSchema, type MemoryRetrievalResponse, MemoryRetrievalResponseSchema, type MessageDirection, MessageDirectionSchema, type MessageReadyCallback, type ObservationInfo, ObservationInfoSchema, type OpenAITool, OpenAIToolSchema, type Operator, type OperatorProcessingResult, OperatorProcessingResultSchema, type OperatorResult, type OperatorResultEvent, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, type ParticipantAddress, ParticipantAddressSchema, type ParticipantAddressType, ParticipantAddressTypeSchema, type ParticipantId, type ParticipantWebhookPayload, ParticipantWebhookPayloadSchema, type Profile, type ProfileId, type ProfileLookupResponse, ProfileLookupResponseSchema, type ProfileResponse, ProfileResponseSchema, ProfileSchema, type PromptMessage, PromptMessageSchema, SMSChannel, type SMSChannelEvents, type SessionInfo, SessionInfoSchema, type SessionMessage, SessionMessageSchema, type SetupMessage, SetupMessageSchema, type SummaryInfo, SummaryInfoSchema, TAC, type TACChannelType, TACChannelTypeSchema, type TACCommunication, type TACCommunicationAuthor, TACCommunicationAuthorSchema, type TACCommunicationContent, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, type TACConfigData, TACConfigSchema, type TACDeliveryStatus, TACDeliveryStatusSchema, TACMemoryResponse, type TACOptions, type TACParticipantType, TACParticipantTypeSchema, TACServer, type TACServerConfig, TACTool, type TextTokenMessage, TextTokenMessageSchema, type ToolContext, ToolContextSchema, type ToolExecutionResult, ToolExecutionResultSchema, type ToolFunction, type Transcription, TranscriptionSchema, type TranscriptionWord, TranscriptionWordSchema, VoiceChannel, type VoiceChannelEvents, type VoiceServerConfig, VoiceServerConfigSchema, type WebSocketMessage, WebSocketMessageSchema, type WebhookPaths, WebhookPathsSchema, WebhookRouter, type WebhookRoutingError, type WebhookRoutingResult, type WebhookRoutingSkip, type WebhookRoutingSuccess, type _SDKDriftGuards, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, extractChannelFromWebhook, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };

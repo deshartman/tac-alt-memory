@@ -3436,6 +3436,132 @@ function extractChannelFromWebhook(webhookData) {
   return void 0;
 }
 
+// packages/core/src/util/webhook-router.ts
+var WebhookRouter = class {
+  constructor(tac) {
+    this.tac = tac;
+  }
+  /**
+   * Route a webhook payload to the appropriate channel
+   *
+   * @param payload - Raw webhook payload (unknown type for validation)
+   * @returns Structured routing result indicating success, skip, or error
+   */
+  route(payload) {
+    const parseResult = ConversationsWebhookPayloadSchema.safeParse(payload);
+    if (!parseResult.success) {
+      return {
+        status: "error",
+        error: "Invalid webhook payload structure",
+        errorType: "validation",
+        shouldProcess: false
+      };
+    }
+    const validatedPayload = parseResult.data;
+    const webhookData = validatedPayload.data;
+    const eventType = validatedPayload.eventType;
+    const conversationId = this.extractConversationId(webhookData);
+    const channelString = extractChannelFromWebhook(webhookData);
+    if (!channelString) {
+      return this.routeLifecycleEvent(validatedPayload, conversationId, eventType);
+    }
+    if (!this.isValidChannelType(channelString)) {
+      return {
+        status: "error",
+        error: `Unknown channel type: ${channelString}`,
+        errorType: "unknown_channel",
+        eventType,
+        conversationId,
+        channelType: channelString,
+        shouldProcess: false
+      };
+    }
+    const targetChannel = this.tac.getChannel(channelString);
+    if (!targetChannel) {
+      return {
+        status: "error",
+        error: `Channel not registered: ${channelString}`,
+        errorType: "channel_not_registered",
+        eventType,
+        conversationId,
+        channelType: channelString,
+        shouldProcess: false
+      };
+    }
+    return {
+      status: "success",
+      channel: targetChannel,
+      channelType: channelString,
+      conversationId,
+      eventType,
+      shouldProcess: true,
+      payload: validatedPayload
+    };
+  }
+  /**
+   * Handle lifecycle events (CONVERSATION_CREATED/UPDATED) that lack channel info
+   *
+   * Strategy:
+   * - Find which channel owns this conversation via isConversationActive()
+   * - If found, route to that channel
+   * - If not found (e.g., CONVERSATION_CREATED before first message), skip processing
+   */
+  routeLifecycleEvent(payload, conversationId, eventType) {
+    if (eventType !== "CONVERSATION_CREATED" && eventType !== "CONVERSATION_UPDATED") {
+      return {
+        status: "skip",
+        reason: `Event ${eventType} has no channel information`,
+        eventType,
+        conversationId,
+        shouldProcess: false
+      };
+    }
+    const owningChannel = this.findChannelByConversation(conversationId);
+    if (owningChannel) {
+      return {
+        status: "success",
+        channel: owningChannel,
+        channelType: owningChannel.channelType,
+        conversationId,
+        eventType,
+        shouldProcess: true,
+        payload
+      };
+    }
+    return {
+      status: "skip",
+      reason: `Lifecycle event ${eventType} acknowledged (conversation not yet in channel)`,
+      eventType,
+      conversationId,
+      shouldProcess: false
+    };
+  }
+  /**
+   * Find which channel owns a conversation
+   */
+  findChannelByConversation(conversationId) {
+    const channels = this.tac.getChannels();
+    for (const channel of channels) {
+      if (channel.isConversationActive(conversationId)) {
+        return channel;
+      }
+    }
+    return void 0;
+  }
+  /**
+   * Extract conversation ID from webhook data
+   */
+  extractConversationId(data) {
+    return "conversationId" in data && data.conversationId || "id" in data && data.id || "";
+  }
+  /**
+   * Type guard for valid channel types
+   */
+  isValidChannelType(channel) {
+    return channel === "sms" || channel === "voice";
+  }
+};
+
 // packages/tools/src/lib/builder.ts
 var TACTool = class {
   constructor(name, description, parameters, implementation) {
@@ -3841,109 +3967,57 @@ var TACServer = class {
       this.config.webhookPaths.conversation || "/conversation",
       async (request, reply) => {
         try {
-          const parseResult = ConversationsWebhookPayloadSchema.safeParse(request.body);
-          if (!parseResult.success) {
-            this.fastify.log.error(
-              { errors: parseResult.error.errors },
-              "Invalid Conversations webhook payload"
-            );
-            await reply.code(400).send({ error: "Invalid webhook payload" });
-            return;
-          }
-          const payload = parseResult.data;
-          const webhookData = payload.data;
-          const author = "author" in webhookData ? webhookData.author : void 0;
-          const channelString = extractChannelFromWebhook(webhookData);
-          if (channelString && !author?.channel && "addresses" in webhookData) {
-            this.fastify.log.debug(
-              {
-                event_type: payload.eventType,
-                addresses_count: Array.isArray(webhookData.addresses) ? webhookData.addresses.length : 0,
-                extracted_channel: channelString
-              },
-              "Extracted channel from participant addresses"
-            );
-          }
-          if (!channelString) {
-            const eventType2 = payload.eventType;
-            const conversationId2 = webhookData.conversationId;
-            if (eventType2 === "CONVERSATION_UPDATED" || eventType2 === "CONVERSATION_CREATED") {
-              const channels = this.tac.getChannels();
-              let targetChannel2;
-              for (const channel of channels) {
-                if (channel.isConversationActive(conversationId2)) {
-                  targetChannel2 = channel;
-                  break;
-                }
-              }
-              if (targetChannel2) {
-                this.fastify.log.info(
-                  {
-                    event_type: eventType2,
-                    conversation_id: conversationId2,
-                    channel: targetChannel2.channelType
-                  },
-                  `\u2192 Routing lifecycle event ${eventType2} to ${targetChannel2.channelType} channel`
-                );
-                await targetChannel2.processWebhook(payload);
-                await reply.code(200).send({ status: "ok" });
-                return;
-              } else {
-                this.fastify.log.info(
-                  {
-                    event_type: eventType2,
-                    conversation_id: conversationId2
-                  },
-                  `\u2713 Lifecycle event ${eventType2} acknowledged (conversation not yet in channel)`
-                );
-                await reply.code(200).send({ status: "ok" });
-                return;
-              }
+          const router = new WebhookRouter(this.tac);
+          const result = router.route(request.body);
+          switch (result.status) {
+            case "success": {
+              this.fastify.log.info(
+                {
+                  event_type: result.eventType,
+                  conversation_id: result.conversationId,
+                  channel: result.channelType
+                },
+                `\u2192 Routing ${result.eventType} to ${result.channelType} channel`
+              );
+              await result.channel.processWebhook(result.payload);
+              await reply.code(200).send({ status: "ok" });
+              return;
             }
-            this.fastify.log.info(
-              {
-                event_type: eventType2,
-                conversation_id: conversationId2
-              },
-              `\u2713 Skipped ${eventType2} event (no channel info)`
-            );
-            await reply.code(200).send({ status: "ok" });
-            return;
+            case "skip": {
+              this.fastify.log.info(
+                {
+                  event_type: result.eventType,
+                  conversation_id: result.conversationId,
+                  reason: result.reason
+                },
+                `\u2713 ${result.reason}`
+              );
+              await reply.code(200).send({ status: "ok" });
+              return;
+            }
+            case "error": {
+              const logLevel = result.errorType === "validation" ? "error" : "warn";
+              this.fastify.log[logLevel](
+                {
+                  error: result.error,
+                  error_type: result.errorType,
+                  event_type: result.eventType,
+                  conversation_id: result.conversationId,
+                  channel: result.channelType
+                },
+                `Webhook routing error: ${result.error}`
+              );
+              const statusCode = result.errorType === "validation" || result.errorType === "unknown_channel" ? 400 : 500;
+              await reply.code(statusCode).send({ error: result.error });
+              return;
+            }
           }
-          const isValidChannel = (ch) => {
-            return ch === "sms" || ch === "voice";
-          };
-          if (!isValidChannel(channelString)) {
-            this.fastify.log.warn({ channel: channelString }, "Unknown channel type in webhook");
-            await reply.code(400).send({ error: "Unknown channel type" });
-            return;
-          }
-          const targetChannel = this.tac.getChannel(channelString);
-          if (!targetChannel) {
-            this.fastify.log.error({ channel: channelString }, "Channel not registered");
-            await reply.code(500).send({ error: "Channel not available" });
-            return;
-          }
-          const eventType = payload.eventType;
-          const conversationId = webhookData.conversationId || webhookData.id;
-          this.fastify.log.info(
-            {
-              event_type: eventType,
-              conversation_id: conversationId,
-              channel: channelString
-            },
-            `\u2192 Routing ${eventType} to ${channelString} channel`
-          );
-          await targetChannel.processWebhook(payload);
-          await reply.code(200).send({ status: "ok" });
         } catch (error) {
           this.fastify.log.error(
-            "Conversations webhook error: " + (error instanceof Error ? error.message : String(error))
+            { err: error },
+            "Unexpected error in webhook handler: " + (error instanceof Error ? error.message : String(error))
           );
-          await reply.code(500).send({
-            error: "Internal server error",
-            message: error instanceof Error ? error.message : String(error)
-          });
+          await reply.code(500).send({ error: "Internal server error" });
         }
       }
     );
@@ -4169,6 +4243,6 @@ var TACServer = class {
   }
 };
 
-export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolContextSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, extractChannelFromWebhook, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
+export { AuthorInfoSchema, BaseChannel, BuiltInTools, ChannelTypeSchema, CintelParticipantSchema, CommunicationContentSchema, CommunicationParticipantSchema, CommunicationSchema, CommunicationWebhookPayloadSchema, ConversationAddressSchema, ConversationClient, ConversationIntelligenceConfigSchema, ConversationParticipantSchema, ConversationRelayAttributesSchema, ConversationRelayCallbackPayloadSchema, ConversationRelayConfigSchema, ConversationResponseSchema, ConversationSessionSchema, ConversationSummaryItemSchema, ConversationWebhookPayloadSchema, ConversationsCommunicationDataSchema, ConversationsConversationDataSchema, ConversationsParticipantDataSchema, ConversationsWebhookPayloadSchema, CreateConversationSummariesResponseSchema, CreateObservationResponseSchema, CustomParametersSchema, EMPTY_MEMORY_RESPONSE, EnvironmentSchema, EnvironmentVariables, ExecutionDetailsSchema, HandoffDataSchema, IntelligenceConfigurationSchema, InterruptMessageSchema, JSONSchemaSchema, KnowledgeBaseSchema, KnowledgeBaseStatusSchema, KnowledgeChunkResultSchema, KnowledgeClient, KnowledgeSearchResponseSchema, LanguageAttributesSchema, MemoryChannelTypeSchema, MemoryClient, MemoryCommunicationContentSchema, MemoryCommunicationSchema, MemoryDeliveryStatusSchema, MemoryParticipantSchema, MemoryParticipantTypeSchema, MemoryRetrievalRequestSchema, MemoryRetrievalResponseSchema, MessageDirectionSchema, ObservationInfoSchema, OpenAIToolSchema, OperatorProcessingResultSchema, OperatorResultEventSchema, OperatorResultProcessor, OperatorResultSchema, OperatorSchema, ParticipantAddressSchema, ParticipantAddressTypeSchema, ParticipantWebhookPayloadSchema, ProfileLookupResponseSchema, ProfileResponseSchema, ProfileSchema, PromptMessageSchema, SMSChannel, SessionInfoSchema, SessionMessageSchema, SetupMessageSchema, SummaryInfoSchema, TAC, TACChannelTypeSchema, TACCommunicationAuthorSchema, TACCommunicationContentSchema, TACCommunicationSchema, TACConfig, TACConfigSchema, TACDeliveryStatusSchema, TACMemoryResponse, TACParticipantTypeSchema, TACServer, TACTool, TextTokenMessageSchema, ToolContextSchema, ToolExecutionResultSchema, TranscriptionSchema, TranscriptionWordSchema, VoiceChannel, VoiceServerConfigSchema, WebSocketMessageSchema, WebhookPathsSchema, WebhookRouter, computeServiceUrls, createHandoffTool, createHandoffTools, createKnowledgeSearchTool, createKnowledgeSearchToolAsync, createKnowledgeTools, createLogger, createMemoryRetrievalTool, createMemoryTools, createMessagingTools, createSendMessageTool, defineTool, extractChannelFromWebhook, handleFlexHandoffLogic, isConversationId, isParticipantId, isProfileId };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map
