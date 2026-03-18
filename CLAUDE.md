@@ -48,6 +48,58 @@ getting_started/  # Example apps (OpenAI integration)
 - **Voice Channel**: Bi-directional WebSocket + TwiML for real-time audio streaming via `/conversation` endpoint
 - **Memory Integration**: Automatic conversation context storage and retrieval
 
+### Webhook Routing Architecture
+
+The webhook routing system intelligently routes Conversations API webhooks to the appropriate channel (SMS or Voice):
+
+#### WebhookRouter Class (`packages/core/src/util/webhook-router.ts`)
+
+**Pure business logic** for routing webhook payloads - reusable with any server framework (Express, Koa, Fastify, etc.):
+
+1. **Zod Validation**: Validates webhook payload structure with `ConversationsWebhookPayloadSchema`
+2. **Channel Extraction**: Extracts channel from `author.channel` (COMMUNICATION events) or `addresses[0].channel` (PARTICIPANT events)
+3. **Lifecycle Event Routing**: Handles CONVERSATION_CREATED/UPDATED events without channel info by finding owning channel via `isConversationActive()`
+4. **Error Classification**: Returns discriminated union (`WebhookRoutingSuccess | WebhookRoutingSkip | WebhookRoutingError`)
+
+**Key Features**:
+- Accepts `null` values for optional fields (`profileId`, `channelId`, `createdAt`, `updatedAt`) using `.nullish()`
+- Handles race conditions (lifecycle events before first message)
+- Type-safe with TypeScript discriminated unions
+- Testable independently of HTTP layer
+
+**Usage with Custom Servers**:
+```typescript
+import { WebhookRouter } from '@twilio/tac-core';
+
+// Express example
+app.post('/webhook', async (req, res) => {
+  const router = new WebhookRouter(tac);
+  const result = router.route(req.body);
+
+  switch (result.status) {
+    case 'success':
+      await result.channel.processWebhook(result.payload);
+      res.json({ status: 'ok' });
+      break;
+    case 'skip':
+      res.json({ status: 'ok' });
+      break;
+    case 'error':
+      res.status(result.errorType === 'validation' ? 400 : 500)
+         .json({ error: result.error });
+      break;
+  }
+});
+```
+
+#### TACServer Integration
+
+`TACServer` uses `WebhookRouter` internally, handling only HTTP concerns (logging, status codes, error responses). The `/conversation` endpoint processes all webhook events for both SMS and Voice channels.
+
+**Error Handling Strategy**:
+- **400** (client error): Invalid payload, unknown channel type
+- **500** (server error): Channel not registered, internal errors (Twilio retries with exponential backoff)
+
 ## Code Conventions
 
 - **TypeScript strict mode** with `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`
@@ -71,11 +123,12 @@ getting_started/  # Example apps (OpenAI integration)
 
 - **TAC class** (`packages/core/src/lib/tac.ts`): Central orchestrator managing config, channels, callbacks, and API clients
 - **Channel abstraction** (`packages/core/src/channels/base.ts`): `BaseChannel` abstract base class extended by `SMSChannel` (webhooks/TwiML) and `VoiceChannel` (WebSocket)
+- **WebhookRouter** (`packages/core/src/util/webhook-router.ts`): Pure business logic for routing webhook payloads to channels; reusable with any server framework
 - **Callback pattern**: Simple callbacks (`onMessageReady`, `onInterrupt`, `onHandoff`, `onConversationEnded`) instead of EventEmitter
 - **Tool system** (`packages/tools/src/lib/builder.ts`): `defineTool()` with JSON schema; supports conversion to OpenAI and Anthropic formats
 - **Config via Zod** (`packages/core/src/lib/config.ts`): `TACConfig.fromEnv()` validates env vars; environment-aware API URL computation (dev/stage/prod)
 - **API credentials consolidated** at `TACConfig` level (apiKey/apiToken shared across Memory, Conversation, Knowledge clients)
-- **TACServer** (`packages/server/src/lib/server.ts`): Fastify-based server with default `welcomeGreeting` for voice calls; customizable via `conversationRelayConfig`
+- **TACServer** (`packages/server/src/lib/server.ts`): Fastify-based server with default `welcomeGreeting` for voice calls; uses `WebhookRouter` for intelligent webhook routing
 
 ## Dependencies
 

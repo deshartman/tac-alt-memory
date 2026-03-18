@@ -16,12 +16,9 @@ import {
   ConversationRelayCallbackPayload,
   ConversationRelayCallbackPayloadSchema,
   ConversationRelayConfig,
-  ConversationsWebhookPayloadSchema,
-  BaseChannel,
-  ConversationId,
   TAC,
   VoiceChannel,
-  extractChannelFromWebhook,
+  WebhookRouter,
 } from '@twilio/tac-core';
 
 /**
@@ -191,141 +188,76 @@ export class TACServer {
       this.config.webhookPaths.conversation || '/conversation',
       async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-          // Validate webhook payload with Zod schema
-          const parseResult = ConversationsWebhookPayloadSchema.safeParse(request.body);
+          // Delegate routing to WebhookRouter
+          const router = new WebhookRouter(this.tac);
+          const result = router.route(request.body);
 
-          if (!parseResult.success) {
-            this.fastify.log.error(
-              { errors: parseResult.error.errors },
-              'Invalid Conversations webhook payload'
-            );
-            await reply.code(400).send({ error: 'Invalid webhook payload' });
-            return;
-          }
+          // Handle routing result with appropriate HTTP responses
+          switch (result.status) {
+            case 'success': {
+              // Log routing decision
+              this.fastify.log.info(
+                {
+                  event_type: result.eventType,
+                  conversation_id: result.conversationId,
+                  channel: result.channelType,
+                },
+                `→ Routing ${result.eventType} to ${result.channelType} channel`
+              );
 
-          const payload = parseResult.data;
-          const webhookData = payload.data;
-          const author = 'author' in webhookData ? webhookData.author : undefined;
-          const channelString = extractChannelFromWebhook(webhookData);
-
-          // Log when channel is extracted from addresses (for observability)
-          if (channelString && !author?.channel && 'addresses' in webhookData) {
-            this.fastify.log.debug(
-              {
-                event_type: payload.eventType,
-                addresses_count: Array.isArray(webhookData.addresses)
-                  ? webhookData.addresses.length
-                  : 0,
-                extracted_channel: channelString,
-              },
-              'Extracted channel from participant addresses'
-            );
-          }
-
-          // Handle lifecycle events without channel information
-          // These events (CONVERSATION_CREATED, CONVERSATION_UPDATED) are container-level
-          // and need to be routed to the channel that owns the conversation
-          if (!channelString) {
-            const eventType = payload.eventType;
-            // Extract conversation ID - all webhook data types have conversationId
-            const conversationId = webhookData.conversationId;
-
-            // For CONVERSATION_UPDATED and CONVERSATION_CREATED, find the owning channel
-            if (eventType === 'CONVERSATION_UPDATED' || eventType === 'CONVERSATION_CREATED') {
-              // Find which channel owns this conversation
-              const channels: BaseChannel[] = this.tac.getChannels();
-              let targetChannel: BaseChannel | undefined;
-
-              for (const channel of channels) {
-                // Cast to ConversationId for branded type compatibility
-                if (channel.isConversationActive(conversationId as ConversationId)) {
-                  targetChannel = channel;
-                  break;
-                }
-              }
-
-              if (targetChannel) {
-                this.fastify.log.info(
-                  {
-                    event_type: eventType,
-                    conversation_id: conversationId,
-                    channel: targetChannel.channelType,
-                  },
-                  `→ Routing lifecycle event ${eventType} to ${targetChannel.channelType} channel`
-                );
-                await targetChannel.processWebhook(payload);
-                await reply.code(200).send({ status: 'ok' });
-                return;
-              } else {
-                // Conversation not found in any channel - this is expected for CONVERSATION_CREATED
-                // before first communication, so we just acknowledge it
-                this.fastify.log.info(
-                  {
-                    event_type: eventType,
-                    conversation_id: conversationId,
-                  },
-                  `✓ Lifecycle event ${eventType} acknowledged (conversation not yet in channel)`
-                );
-                await reply.code(200).send({ status: 'ok' });
-                return;
-              }
+              // Process webhook through channel
+              await result.channel.processWebhook(result.payload);
+              await reply.code(200).send({ status: 'ok' });
+              return;
             }
 
-            // For other lifecycle events without channel info, acknowledge but don't process
-            this.fastify.log.info(
-              {
-                event_type: eventType,
-                conversation_id: conversationId,
-              },
-              `✓ Skipped ${eventType} event (no channel info)`
-            );
+            case 'skip': {
+              // Log skip reason
+              this.fastify.log.info(
+                {
+                  event_type: result.eventType,
+                  conversation_id: result.conversationId,
+                  reason: result.reason,
+                },
+                `✓ ${result.reason}`
+              );
+              await reply.code(200).send({ status: 'ok' });
+              return;
+            }
 
-            await reply.code(200).send({ status: 'ok' });
-            return;
+            case 'error': {
+              // Log error with appropriate level
+              const logLevel = result.errorType === 'validation' ? 'error' : 'warn';
+              this.fastify.log[logLevel](
+                {
+                  error: result.error,
+                  error_type: result.errorType,
+                  event_type: result.eventType,
+                  conversation_id: result.conversationId,
+                  channel: result.channelType,
+                },
+                `Webhook routing error: ${result.error}`
+              );
+
+              // Return appropriate HTTP status
+              // 400 for client errors (validation, unknown channel)
+              // 500 for server errors (channel not registered, internal errors)
+              const statusCode =
+                result.errorType === 'validation' || result.errorType === 'unknown_channel'
+                  ? 400
+                  : 500;
+              await reply.code(statusCode).send({ error: result.error });
+              return;
+            }
           }
-
-          // Validate channel type
-          const isValidChannel = (ch: string): ch is 'sms' | 'voice' => {
-            return ch === 'sms' || ch === 'voice';
-          };
-
-          if (!isValidChannel(channelString)) {
-            this.fastify.log.warn({ channel: channelString }, 'Unknown channel type in webhook');
-            await reply.code(400).send({ error: 'Unknown channel type' });
-            return;
-          }
-
-          // Route to appropriate channel
-          const targetChannel = this.tac.getChannel(channelString);
-          if (!targetChannel) {
-            this.fastify.log.error({ channel: channelString }, 'Channel not registered');
-            await reply.code(500).send({ error: 'Channel not available' });
-            return;
-          }
-
-          const eventType = payload.eventType;
-          const conversationId = webhookData.conversationId || webhookData.id;
-
-          this.fastify.log.info(
-            {
-              event_type: eventType,
-              conversation_id: conversationId,
-              channel: channelString,
-            },
-            `→ Routing ${eventType} to ${channelString} channel`
-          );
-
-          await targetChannel.processWebhook(payload);
-          await reply.code(200).send({ status: 'ok' });
         } catch (error) {
+          // Catch-all for unexpected errors
           this.fastify.log.error(
-            'Conversations webhook error: ' +
+            { err: error },
+            'Unexpected error in webhook handler: ' +
               (error instanceof Error ? error.message : String(error))
           );
-          await reply.code(500).send({
-            error: 'Internal server error',
-            message: error instanceof Error ? error.message : String(error),
-          });
+          await reply.code(500).send({ error: 'Internal server error' });
         }
       }
     );
